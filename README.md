@@ -21,6 +21,7 @@ Cards live in a drawer that slides in from the right edge of the terminal.
 
 - tmux 3.3 or later
 - bash 4 or later (on macOS, install a newer bash with Homebrew)
+- Vim 8.1 or later, for `vim` input and for editing multi-line cards
 
 ## Installation
 
@@ -53,7 +54,12 @@ run-shell ~/.tmux/plugins/tmux-cuecard/cuecard.tmux
 | `prefix` + `Q` | Open the drawer                       |
 | `prefix` + `A` | Write a new card without the drawer   |
 
-New cards are written in `$VISUAL`, then `$EDITOR`, then `vi`. Saving an empty file adds nothing.
+How you write a card depends on `@cuecard-input`:
+
+- `box` (default): a one-line input box. `Enter` saves the card.
+- `vim`: opens `vim --clean`, so your vimrc and plugins stay out of the popup. Cards can span multiple lines.
+
+Saving an empty card adds nothing.
 
 Inside the drawer:
 
@@ -67,21 +73,25 @@ Inside the drawer:
 | `d`              | Delete the card                          |
 | `q`, `Esc`       | Close the drawer                         |
 
+With `box` input, `e` still opens vim for a card with more than one line.
+
 The newest card is at the top. The lower half of the drawer previews the selected card in full.
 
 Cards are pasted into the pane that was active when the drawer opened. The paste uses bracketed paste and never presses Enter, so a multi-line card lands in the prompt as one block and waits for you to review and send it.
 
 ## Options
 
-| Option                | Default | Description                  |
-| --------------------- | ------- | ---------------------------- |
-| `@cuecard-key`        | `Q`     | Key that opens the drawer    |
-| `@cuecard-insert-key` | `A`     | Key that writes a new card   |
-| `@cuecard-width`      | `40%`   | Width of the drawer          |
+| Option                | Default | Description                           |
+| --------------------- | ------- | ------------------------------------- |
+| `@cuecard-key`        | `Q`     | Key that opens the drawer             |
+| `@cuecard-insert-key` | `A`     | Key that writes a new card            |
+| `@cuecard-width`      | `40%`   | Width of the drawer                   |
+| `@cuecard-input`      | `box`   | How to write a card: `box` or `vim`   |
 
 ```tmux
 set -g @cuecard-key 'C'
 set -g @cuecard-width '60'
+set -g @cuecard-input 'vim'
 ```
 
 ## Storage

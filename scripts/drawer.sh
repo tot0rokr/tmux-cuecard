@@ -6,6 +6,7 @@ shopt -s nullglob
 
 pane_id=$(current_pane_id)
 dir=$(window_dir "$(current_window_id)")
+input=$(input_mode) || exit 1
 
 cards=()
 titles=()
@@ -154,9 +155,16 @@ paste_selected() {
   tmux paste-buffer -p -d -b cuecard -t "$pane_id"
 }
 
+# The box holds a single line, so multi-line cards always open in vim.
 edit_selected() {
-  local card=${cards[selected]}
-  open_editor "$card"
+  local card=${cards[selected]} lines
+  mapfile -t lines < "$card"
+  if [[ $input == box ]] && (( ${#lines[@]} <= 1 )); then
+    read_box 'Edit card (Enter saves, empty deletes)' "${lines[0]-}" || return
+    printf '%s\n' "$BOX_TEXT" > "$card"
+  else
+    edit_in_vim "$card"
+  fi
   has_text "$card" || rm -f "$card"
 }
 

@@ -17,15 +17,21 @@ remove_dead_server_dirs() {
 }
 
 main() {
-  local drawer_key insert_key width popup cleanup_script
+  local drawer_key insert_key width input title popup box_popup cleanup_script
   drawer_key=$(get_tmux_option @cuecard-key Q)
   insert_key=$(get_tmux_option @cuecard-insert-key A)
   width=$(get_tmux_option @cuecard-width 40%)
-  popup=(display-popup -E -x R -y 0 -w "$width" -h 100%
-    -T ' cuecard #{window_index}:#{window_name} ')
+  input=$(input_mode) || return
+  title=' cuecard #{window_index}:#{window_name} '
+  popup=(display-popup -E -x R -y 0 -w "$width" -h 100% -T "$title")
+  box_popup=(display-popup -E -w 60% -h 5 -T "$title")
 
   tmux bind-key "$drawer_key" "${popup[@]}" "'$SCRIPTS_DIR/drawer.sh'"
-  tmux bind-key "$insert_key" "${popup[@]}" "'$SCRIPTS_DIR/insert.sh'"
+  if [[ $input == box ]]; then
+    tmux bind-key "$insert_key" "${box_popup[@]}" "'$SCRIPTS_DIR/insert.sh'"
+  else
+    tmux bind-key "$insert_key" "${popup[@]}" "'$SCRIPTS_DIR/insert.sh'"
+  fi
 
   cleanup_script="$SCRIPTS_DIR/cleanup.sh"
   if ! tmux show-hooks -g window-unlinked | grep -qF "$cleanup_script"; then

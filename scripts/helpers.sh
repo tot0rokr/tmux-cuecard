@@ -34,8 +34,25 @@ has_text() {
   grep -q '[^[:space:]]' "$1"
 }
 
-open_editor() {
-  local editor=${VISUAL:-${EDITOR:-vi}}
-  # Unquoted so editor values with flags (e.g. "code -w") still work.
-  $editor "$1"
+# Errors go to display-message because TPM and display-popup -E both hide
+# a script's stderr.
+input_mode() {
+  local mode
+  mode=$(get_tmux_option @cuecard-input box)
+  if [[ $mode != vim && $mode != box ]]; then
+    tmux display-message "cuecard: @cuecard-input must be vim or box, not '$mode'"
+    return 1
+  fi
+  echo "$mode"
+}
+
+# --clean skips the user's vimrc and plugins, which can break editing in a popup.
+edit_in_vim() {
+  vim --clean "$1"
+}
+
+# Reads one line into BOX_TEXT, prefilled with $2.
+read_box() {
+  printf '\e[H\e[2J%s\n' "$1"
+  IFS= read -e -r -p '> ' -i "${2-}" BOX_TEXT
 }
