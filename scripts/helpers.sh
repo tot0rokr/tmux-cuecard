@@ -30,6 +30,19 @@ current_pane_id() {
   tmux display-message -p '#{pane_id}'
 }
 
+# Mirrors the number of cards into a window option, so status formats can
+# show it without running a shell command on every redraw.
+update_count() {
+  local cards
+  cards=("$(window_dir "$1")"/*)
+  [[ -e ${cards[0]} ]] || cards=()
+  if (( ${#cards[@]} )); then
+    tmux set-option -wq -t "$1" @cuecard-count "${#cards[@]}"
+  else
+    tmux set-option -wqu -t "$1" @cuecard-count
+  fi
+}
+
 has_text() {
   grep -q '[^[:space:]]' "$1"
 }

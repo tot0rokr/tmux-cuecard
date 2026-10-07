@@ -5,7 +5,8 @@ source "$CURRENT_DIR/helpers.sh"
 shopt -s nullglob
 
 pane_id=$(current_pane_id)
-dir=$(window_dir "$(current_window_id)")
+window_id=$(current_window_id)
+dir=$(window_dir "$window_id")
 input=$(input_mode) || exit 1
 
 cards=()
@@ -36,6 +37,7 @@ load_cards() {
   done
   (( selected >= ${#cards[@]} )) && selected=$(( ${#cards[@]} - 1 ))
   (( selected < 0 )) && selected=0
+  update_count "$window_id"
 }
 
 # Splits $1 at the widest prefix that fits in $2 terminal columns, counting
@@ -191,6 +193,7 @@ main() {
         (( ${#cards[@]} )) || continue
         paste_selected
         rm -f "${cards[selected]}"
+        update_count "$window_id"
         exit 0
         ;;
       i)

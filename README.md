@@ -79,19 +79,38 @@ The newest card is at the top. The lower half of the drawer previews the selecte
 
 Cards are pasted into the pane that was active when the drawer opened. The paste uses bracketed paste and never presses Enter, so a multi-line card lands in the prompt as one block and waits for you to review and send it.
 
+## Status line
+
+Put `#{cuecard}` in a status format to show how many cards are waiting. It shows `cue:2` when the window has two cards, and nothing when it has none.
+
+```tmux
+set -g status-right '#{cuecard} %H:%M'
+```
+
+The placeholder works in `status-left`, `status-right`, `window-status-format`, `window-status-current-format` and `pane-border-format`. In a window format each window shows its own count. With `pane-border-status top`, a pane border format can put the count in the top right corner of each pane:
+
+```tmux
+set -g pane-border-status top
+set -g pane-border-format '#[align=right]#{cuecard}'
+```
+
+Set the options that use `#{cuecard}` before the plugin loads. The count updates as soon as you add or remove a card. It is kept in the window option `@cuecard-count`, so you can also use it in your own formats.
+
 ## Options
 
-| Option                | Default | Description                           |
-| --------------------- | ------- | ------------------------------------- |
-| `@cuecard-key`        | `Q`     | Key that opens the drawer             |
-| `@cuecard-insert-key` | `A`     | Key that writes a new card            |
-| `@cuecard-width`      | `40%`   | Width of the drawer                   |
-| `@cuecard-input`      | `box`   | How to write a card: `box` or `vim`   |
+| Option                   | Default                                        | Description                         |
+| ------------------------ | ---------------------------------------------- | ----------------------------------- |
+| `@cuecard-key`           | `Q`                                            | Key that opens the drawer           |
+| `@cuecard-insert-key`    | `A`                                            | Key that writes a new card          |
+| `@cuecard-width`         | `40%`                                          | Width of the drawer                 |
+| `@cuecard-input`         | `box`                                          | How to write a card: `box` or `vim` |
+| `@cuecard-status-format` | `#{?#{@cuecard-count},cue:#{@cuecard-count},}` | What `#{cuecard}` expands to        |
 
 ```tmux
 set -g @cuecard-key 'C'
 set -g @cuecard-width '60'
 set -g @cuecard-input 'vim'
+set -g @cuecard-status-format '#{?#{@cuecard-count},#[fg=yellow]● #{@cuecard-count}#[default],}'
 ```
 
 ## Storage

@@ -16,6 +16,30 @@ remove_dead_server_dirs() {
   done
 }
 
+STATUS_OPTIONS=(status-left status-right window-status-format
+  window-status-current-format pane-border-format)
+
+# Replaces #{cuecard} in the status formats, the same way other TPM plugins
+# expand their placeholders.
+interpolate_status() {
+  local placeholder='#{cuecard}' format option value
+  format=$(get_tmux_option @cuecard-status-format \
+    '#{?#{@cuecard-count},cue:#{@cuecard-count},}')
+  for option in "${STATUS_OPTIONS[@]}"; do
+    value=$(get_tmux_option "$option" '')
+    [[ $value == *"$placeholder"* ]] || continue
+    tmux set-option -gq "$option" "${value//"$placeholder"/"$format"}"
+  done
+}
+
+# Sets the count of windows that already had cards before this version.
+sync_counts() {
+  local window_id
+  for window_id in $(tmux list-windows -a -F '#{window_id}'); do
+    update_count "$window_id"
+  done
+}
+
 main() {
   local drawer_key insert_key width input title popup box_popup cleanup_script
   drawer_key=$(get_tmux_option @cuecard-key Q)
@@ -40,6 +64,8 @@ main() {
   fi
 
   remove_dead_server_dirs
+  interpolate_status
+  sync_counts
 }
 
 main
