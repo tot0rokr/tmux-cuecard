@@ -11,7 +11,7 @@ if [[ ! $window_id =~ ^@[0-9]+$ ]]; then
 fi
 
 # window-unlinked also fires when a window leaves one of several sessions.
-if tmux list-windows -a -F '#{window_id}' | grep -qxF "$window_id"; then
+if window_exists "$window_id"; then
   exit 0
 fi
 

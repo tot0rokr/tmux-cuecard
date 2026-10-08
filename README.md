@@ -14,7 +14,7 @@ Cards live in a drawer that slides in from the right edge of the terminal.
 │──────────────────────────────│
 │ Enter pick   p pop   i new   │
 │ e edit   d delete   q quit   │
-│ J/K move                     │
+│ J/K move   m to window       │
 └──────────────────────────────┘
 ```
 
@@ -68,6 +68,7 @@ Inside the drawer:
 | ---------------- | ---------------------------------------- |
 | `↑` `↓`, `k` `j` | Move the selection                       |
 | `K` `J`          | Move the card up or down                 |
+| `m`              | Move the card to another window          |
 | `Enter`          | Pick: paste the card and keep it         |
 | `p`              | Pop: paste the card and remove it        |
 | `i`              | Write a new card                         |
@@ -78,6 +79,8 @@ Inside the drawer:
 With `box` input, `e` still opens vim for a card with more than one line.
 
 Cards are listed oldest first: the top card is next in line, and a new card goes to the bottom. `K` and `J` change a card's place in line, and the new order is kept. Each row shows when the card was created, unless the drawer is too narrow for it. The lower half of the drawer previews the selected card in full.
+
+`m` lists the other windows of the tmux server, with the number of cards each one holds. Pick a window with `Enter` to move the card to the bottom of its stack; the card keeps its creation time. `q` or `Esc` goes back to the cards.
 
 Cards are pasted into the pane that was active when the drawer opened. The paste uses bracketed paste and never presses Enter, so a multi-line card lands in the prompt as one block and waits for you to review and send it.
 
@@ -117,7 +120,7 @@ set -g @cuecard-status-format '#{?#{@cuecard-count},#[fg=yellow]● #{@cuecard-c
 
 ## Storage
 
-Each card is a plain file under `${XDG_STATE_HOME:-~/.local/state}/tmux-cuecard/<server>/<window_id>/`. The file is named `<order>.<created>.<random>`, where `<order>` sets its place in the stack and `<created>` is its creation time in epoch seconds.
+Each card is a plain file under `${XDG_STATE_HOME:-~/.local/state}/tmux-cuecard/<server>/<window_id>/`. The file is named `<order>.<created>.<random>`, where `<order>` sets its place in the stack and `<created>` is its creation time in epoch seconds. Moving a card to another window moves its file to that window's directory with a new `<order>`.
 
 Cards belong to the tmux window, not the drawer:
 

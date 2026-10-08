@@ -30,6 +30,10 @@ current_pane_id() {
   tmux display-message -p '#{pane_id}'
 }
 
+window_exists() {
+  tmux list-windows -a -F '#{window_id}' | grep -qxF "$1"
+}
+
 # Mirrors the number of cards into a window option, so status formats can
 # show it without running a shell command on every redraw.
 update_count() {
@@ -76,6 +80,18 @@ next_order() {
     (( 10#$CARD_ORDER > max )) && max=$(( 10#$CARD_ORDER ))
   done
   echo $(( max + 1 ))
+}
+
+# Moves card $1 to the bottom of the stack in directory $2. It keeps its
+# <created>.<rand>, so it keeps its creation time and the drawer can still
+# find it. Sets CARD_NAME to its new name.
+move_card() {
+  local card=$1 dir=$2 order
+  mkdir -p "$dir"
+  order=$(next_order "$dir")
+  parse_card "$card"
+  card_name "$order" "$CARD_CREATED" "$CARD_RAND"
+  mv "$card" "$dir/$CARD_NAME"
 }
 
 has_text() {
