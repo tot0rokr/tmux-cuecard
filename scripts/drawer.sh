@@ -6,16 +6,30 @@ shopt -s nullglob
 
 pane_id=$(current_pane_id)
 window_id=$(current_window_id)
-dir=$(window_dir "$window_id")
 input=$(input_mode) || exit 1
+
+# The drawer shows one of two views: the cards of this window, or the saved
+# cards that every window shares. It opens on the window view, and each view
+# keeps its own selection and scroll while the drawer is open.
+view=window
+declare -A view_dir=([window]="$(window_dir "$window_id")"
+  [saved]="$(saved_dir)")
+declare -A view_selected=([window]=0 [saved]=0)
+declare -A view_top=([window]=0 [saved]=0)
+declare -A view_card=()
+dir=${view_dir[window]}
 
 cards=()
 titles=()
 dates=()
 selected=0
 top=0
-footer=(' Enter pick   p pop   i new' ' e edit   d delete   q quit'
-  ' J/K move   m to window')
+window_footer=(' Enter pick   p pop   i new' ' e edit   d delete   q quit'
+  ' c save   Tab saved' ' J/K move   m to window')
+saved_footer=(' Enter pick   c to window' ' i new   e edit   q quit'
+  ' J/K move   Tab window' ' d delete')
+window_empty=(' (empty) press i to add')
+saved_empty=(' (empty) press i to add' ' or c in the window view')
 # Shown in place of the first footer line until the next key.
 notice=
 
@@ -52,15 +66,16 @@ load_cards() {
   done
   (( selected >= ${#cards[@]} )) && selected=$(( ${#cards[@]} - 1 ))
   (( selected < 0 )) && selected=0
-  update_count "$window_id"
+  [[ $view == saved ]] || update_count "$window_id"
 }
 
-# A drawer on another client can rename or remove cards of this window, so
-# a key that touches files first reloads them and finds the selected card
-# again by <created>.<rand>, which a move keeps. Fails if the card is gone.
+# A drawer on another client, or for the saved cards one on another tmux
+# server, can rename or remove cards at any time. So a key that touches
+# files first reloads them and finds the selected card, or card $1, again
+# by <created>.<rand>, which a move keeps. Fails if the card is gone.
 refresh_selected() {
   local id i
-  parse_card "${cards[selected]}"
+  parse_card "${1-${cards[selected]}}"
   id=$CARD_CREATED.$CARD_RAND
   load_cards
   for (( i = 0; i < ${#cards[@]}; i++ )); do
@@ -126,17 +141,20 @@ goto() {
 # Splits a drawer of $1 rows between a list of $3 items, the preview and a
 # footer of $2 lines. A short drawer gives up the last footer lines before
 # its only preview row, but keeps the first two as long as the list row
-# still fits. Sets LIST_H and FOOT_H.
+# still fits. A drawer of two rows or fewer has no footer, and one of no
+# rows no list row either. Sets LIST_H and FOOT_H.
 layout() {
   local rows=$1 max_list
   FOOT_H=$(( rows - 4 ))
   (( FOOT_H < 2 )) && FOOT_H=2
   (( FOOT_H > $2 )) && FOOT_H=$2
   (( FOOT_H > rows - 2 )) && FOOT_H=$(( rows - 2 ))
+  (( FOOT_H < 0 )) && FOOT_H=0
   max_list=$(( (rows - FOOT_H - 2) / 2 ))
   LIST_H=$3
   (( LIST_H > max_list )) && LIST_H=$max_list
   (( LIST_H < 1 )) && LIST_H=1
+  (( LIST_H > rows )) && LIST_H=$rows
 }
 
 # Scrolls a list of $3 items shown in $4 rows from item $1 just enough to
@@ -166,12 +184,14 @@ draw_row() {
   out+=$'\e[0m'
 }
 
-# Draws what goes under a list of $3 rows in a drawer of $1 rows and $2
-# columns: a separator, the preview of card $4 and, under another
-# separator, the footer lines $5...
+# Draws what goes under the first $3 rows (the list, and the tab bar above
+# it if any) of a drawer of $1 rows and $2 columns: a separator, the
+# preview of card $4 and, under another separator, the footer lines $5...
 draw_below_list() {
   local rows=$1 cols=$2 list_h=$3 card=$4 row sep line lines preview_bottom
   shift 4
+  # Rows past the bottom would land on the last row, over the list.
+  (( list_h < rows )) || return
   printf -v sep '%*s' "$cols" ''
   sep=${sep// /─}
 
@@ -216,26 +236,73 @@ draw_below_list() {
   out+=$'\e[0m'
 }
 
+# Draws the tab bar on row 1: each view with its number of cards, the
+# active one in bold and the other dimmed. Another drawer can change the
+# cards of the hidden view, so their number is read from its directory. A
+# drawer too narrow for both shows only the active one, since clipping the
+# bar could cut away the very view that is open.
+draw_tabs() {
+  local cols=$1 other=saved files names name gap=
+  local -A label
+  [[ $view == saved ]] && other=window
+  files=("${view_dir[$other]}"/*)
+  label[$view]=" $view ${#cards[@]}"
+  label[$other]=" $other ${#files[@]}"
+  names=(window saved)
+  # The labels are ASCII, so their length is their width.
+  (( ${#label[window]} + 2 + ${#label[saved]} > cols )) && names=("$view")
+  goto 1
+  for name in "${names[@]}"; do
+    if [[ $name == "$view" ]]; then
+      out+=$'\e[1m'
+    else
+      out+=$'\e[2m'
+    fi
+    fit "$gap${label[$name]}" "$cols"
+    out+=$FIT$'\e[0m'
+    cols=$(( cols - FIT_COLS ))
+    gap='  '
+  done
+}
+
 draw() {
-  local rows cols count row i
+  local rows cols count row i footer empty
   read -r rows cols < <(stty size)
   count=${#cards[@]}
-  layout "$rows" ${#footer[@]} "$count"
+  if [[ $view == saved ]]; then
+    footer=("${saved_footer[@]}")
+    empty=("${saved_empty[@]}")
+  else
+    footer=("${window_footer[@]}")
+    empty=("${window_empty[@]}")
+  fi
+  # The tab bar keeps the first row even in a short drawer, as it is all
+  # that tells the views apart, and the rest is laid out under it.
+  layout $(( rows - 1 )) ${#footer[@]} $(( count ? count : ${#empty[@]} ))
   scroll "$top" "$selected" "$count" "$LIST_H"
   top=$TOP
 
   out=$'\e[H\e[2J'
+  draw_tabs "$cols"
   if (( count == 0 )); then
-    goto 1
-    out+=$'\e[2m (empty) press i to add\e[0m'
+    for (( row = 0; row < LIST_H && row < ${#empty[@]}; row++ )); do
+      fit "${empty[row]}" "$cols"
+      goto $(( row + 2 ))
+      out+=$'\e[2m'"$FIT"$'\e[0m'
+    done
   fi
   for (( row = 0; row < LIST_H && top + row < count; row++ )); do
     i=$(( top + row ))
-    draw_row $(( row + 1 )) "$cols" " ${titles[i]}" " ${dates[i]} " \
+    draw_row $(( row + 2 )) "$cols" " ${titles[i]}" " ${dates[i]} " \
       $(( i == selected ))
   done
-  draw_below_list "$rows" "$cols" "$LIST_H" "${cards[selected]-}" \
+  draw_below_list "$rows" "$cols" $(( LIST_H + 1 )) "${cards[selected]-}" \
     "${footer[@]:0:FOOT_H}"
+  # A drawer too short for a footer shows the notice on its last row
+  # instead, since d in the saved view waits for an answer to it.
+  if [[ -n $notice ]] && (( FOOT_H == 0 )); then
+    draw_row "$rows" "$cols" " $notice" '' 0
+  fi
   printf '%s' "$out"
 }
 
@@ -343,10 +410,12 @@ paste_selected() {
 
 # The box holds a single line, so multi-line cards always open in vim.
 edit_selected() {
-  local card=${cards[selected]} lines
+  local card=${cards[selected]} lines what=card
+  [[ $view == saved ]] && what='saved card'
   mapfile -t lines < "$card"
   if [[ $input == box ]] && (( ${#lines[@]} <= 1 )); then
-    read_box 'Edit card (Enter saves, empty deletes)' "${lines[0]-}" || return
+    read_box "Edit $what (Enter saves, empty deletes)" "${lines[0]-}" ||
+      return
     printf '%s\n' "$BOX_TEXT" > "$card"
   else
     edit_in_vim "$card"
@@ -354,12 +423,29 @@ edit_selected() {
   has_text "$card" || rm -f "$card"
 }
 
-# A new card goes to the bottom, so the selection follows it there.
+# The drawer stays open when its window closes, but the cleanup hook of the
+# window has run by then and would never remove a card written after that.
+# So a window that is gone takes no new card, and the drawer says so.
+window_open() {
+  window_exists "$window_id" && return 0
+  notice='Window is gone'
+  return 1
+}
+
+# The selection follows the new card. Another drawer can add or remove cards
+# while the input is open, so insert.sh writes the name of the new card to a
+# file, rather than the drawer guessing it from the number of cards.
 insert_card() {
-  local count=${#cards[@]}
-  with_terminal_restored "$CURRENT_DIR/insert.sh"
-  load_cards
-  (( ${#cards[@]} > count )) && selected=$(( ${#cards[@]} - 1 ))
+  local made
+  [[ $view == saved ]] || window_open || return
+  made=$(mktemp) || return
+  with_terminal_restored "$CURRENT_DIR/insert.sh" "$view" "$made"
+  if [[ -s $made ]]; then
+    refresh_selected "$(<"$made")"
+  else
+    load_cards
+  fi
+  rm -f "$made"
 }
 
 # Swaps the selected card with the one $1 places away and renames every card
@@ -417,6 +503,66 @@ move_selected_to_window() {
   load_cards
 }
 
+# Copies the selected card to the bottom of the other view as a new card and
+# keeps it where it is, so a window card can be saved for later and a saved
+# card queued in this window.
+copy_selected() {
+  local target=saved
+  [[ $view == saved ]] && target=window
+  (( ${#cards[@]} )) && refresh_selected || return
+  [[ $target == saved ]] || window_open || return
+  if ! add_card "${cards[selected]}" "${view_dir[$target]}"; then
+    notice='Could not copy the card'
+    # Another drawer can remove the card while it is copied.
+    [[ -e ${cards[selected]} ]] || notice='Card is gone'
+    load_cards
+  elif [[ $target == window ]]; then
+    update_count "$window_id"
+    notice='Added to window'
+  else
+    notice='Saved'
+  fi
+}
+
+# Saved cards are meant to last, so deleting one takes a second d right after
+# the first. Any other key cancels and does nothing else.
+confirm_delete() {
+  notice='Press d again to delete'
+  draw
+  read_key
+  notice=
+  [[ $KEY == d ]]
+}
+
+delete_selected() {
+  (( ${#cards[@]} )) && refresh_selected || return
+  if [[ $view == saved ]]; then
+    confirm_delete && refresh_selected || return
+  fi
+  rm -f "${cards[selected]}"
+  load_cards
+}
+
+# The cards of the other view can change while it is hidden, so its
+# selected card is found again by <created>.<rand>. If that card is gone,
+# the selection keeps its place in the list.
+switch_view() {
+  local next=saved
+  [[ $view == saved ]] && next=window
+  view_selected[$view]=$selected
+  view_top[$view]=$top
+  view_card[$view]=${cards[selected]-}
+  view=$next
+  dir=${view_dir[$view]}
+  selected=${view_selected[$view]}
+  top=${view_top[$view]}
+  if [[ -n ${view_card[$view]-} ]]; then
+    refresh_selected "${view_card[$view]}"
+  else
+    load_cards
+  fi
+}
+
 main() {
   trap restore_terminal EXIT
   prepare_terminal
@@ -438,8 +584,15 @@ main() {
       J)
         move_selected 1
         ;;
+      $'\t' | $'\e[Z')
+        switch_view
+        ;;
       m)
-        move_selected_to_window
+        # Saved cards are templates: they are never moved or popped.
+        [[ $view == window ]] && move_selected_to_window
+        ;;
+      c)
+        copy_selected
         ;;
       '')
         (( ${#cards[@]} )) && refresh_selected || continue
@@ -447,6 +600,7 @@ main() {
         exit 0
         ;;
       p)
+        [[ $view == window ]] || continue
         (( ${#cards[@]} )) && refresh_selected || continue
         paste_selected
         rm -f "${cards[selected]}"
@@ -462,9 +616,7 @@ main() {
         load_cards
         ;;
       d)
-        (( ${#cards[@]} )) && refresh_selected || continue
-        rm -f "${cards[selected]}"
-        load_cards
+        delete_selected
         ;;
       q | $'\e')
         exit 0

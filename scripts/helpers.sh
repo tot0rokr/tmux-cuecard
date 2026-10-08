@@ -20,6 +20,12 @@ window_dir() {
   echo "$(server_dir)/$1"
 }
 
+# Saved cards are user data that every window and every tmux server shares,
+# so they live in the data directory, where no cleanup ever looks.
+saved_dir() {
+  echo "${XDG_DATA_HOME:-$HOME/.local/share}/tmux-cuecard/saved"
+}
+
 # display-popup does not expand formats in its command, so popup scripts look
 # up the window and pane they were opened from.
 current_window_id() {
@@ -92,6 +98,21 @@ move_card() {
   parse_card "$card"
   card_name "$order" "$CARD_CREATED" "$CARD_RAND"
   mv "$card" "$dir/$CARD_NAME"
+}
+
+# Adds a copy of file $1 to the bottom of the stack in directory $2 as a new
+# card, created now and with a <rand> of its own. Sets CARD_NAME to its
+# name. Fails, leaving no card behind, if $1 cannot be read.
+add_card() {
+  local now card
+  mkdir -p "$2"
+  printf -v now '%(%s)T' -1
+  card_name "$(next_order "$2")" "$now" XXXXXX
+  card=$(mktemp "$2/$CARD_NAME") || return 1
+  CARD_NAME=${card##*/}
+  cp "$1" "$card" 2>/dev/null && return 0
+  rm -f "$card"
+  return 1
 }
 
 has_text() {

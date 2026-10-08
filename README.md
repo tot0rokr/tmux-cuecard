@@ -2,10 +2,11 @@
 
 Keep prompts you plan to send later on cue cards, one stack per tmux window, and paste them when the time is right. Built for queuing up instructions to an AI coding agent such as Claude Code while it is still busy.
 
-Cards live in a drawer that slides in from the right edge of the terminal.
+Cards live in a drawer that slides in from the right edge of the terminal. Prompts you send again and again can be saved in the same drawer and reused from every window.
 
 ```
 ┌─ cuecard 0:claude ───────────┐
+│ window 2   saved 3           │
 │ Run the tests af 10-08 09:12 │
 │ Write the PR des 10-08 09:15 │
 │──────────────────────────────│
@@ -14,6 +15,7 @@ Cards live in a drawer that slides in from the right edge of the terminal.
 │──────────────────────────────│
 │ Enter pick   p pop   i new   │
 │ e edit   d delete   q quit   │
+│ c save   Tab saved           │
 │ J/K move   m to window       │
 └──────────────────────────────┘
 ```
@@ -64,17 +66,19 @@ Saving an empty card adds nothing.
 
 Inside the drawer:
 
-| Key              | Action                                   |
-| ---------------- | ---------------------------------------- |
-| `↑` `↓`, `k` `j` | Move the selection                       |
-| `K` `J`          | Move the card up or down                 |
-| `m`              | Move the card to another window          |
-| `Enter`          | Pick: paste the card and keep it         |
-| `p`              | Pop: paste the card and remove it        |
-| `i`              | Write a new card                         |
-| `e`              | Edit the card (an empty card is removed) |
-| `d`              | Delete the card                          |
-| `q`, `Esc`       | Close the drawer                         |
+| Key              | Action                                                 |
+| ---------------- | ------------------------------------------------------ |
+| `↑` `↓`, `k` `j` | Move the selection                                     |
+| `K` `J`          | Move the card up or down                               |
+| `m`              | Move the card to another window (window cards only)    |
+| `Enter`          | Pick: paste the card and keep it                       |
+| `p`              | Pop: paste the card and remove it (window cards only)  |
+| `i`              | Write a new card                                       |
+| `e`              | Edit the card (an empty card is removed)               |
+| `d`              | Delete the card (saved cards ask first)                |
+| `c`              | Copy the card between the window and the saved cards   |
+| `Tab`            | Switch between the window's cards and the saved cards  |
+| `q`, `Esc`       | Close the drawer                                       |
 
 With `box` input, `e` still opens vim for a card with more than one line.
 
@@ -84,9 +88,23 @@ Cards are listed oldest first: the top card is next in line, and a new card goes
 
 Cards are pasted into the pane that was active when the drawer opened. The paste uses bracketed paste and never presses Enter, so a multi-line card lands in the prompt as one block and waits for you to review and send it.
 
+## Saved cards
+
+Saved cards are prompts you keep for good, such as `Run the tests and fix the failures` or `Write the PR description`. Every window, session and tmux server shares the same saved cards, and they survive tmux restarts. They are kept under `${XDG_DATA_HOME:-~/.local/share}/tmux-cuecard/saved/`, and nothing deletes them automatically (see [Storage](#storage)).
+
+The tab bar at the top of the drawer shows the window's cards and the saved cards, with the number of cards in each; a drawer too narrow for both shows only the open one. `Tab` (or `Shift` + `Tab`) switches between them. The drawer always opens on the window's cards, and each list keeps its selection while the drawer is open.
+
+The saved cards use the same keys, with a few differences, because they are templates rather than a queue:
+
+- `Enter` pastes the card and keeps it, as always. `p` and `m` do nothing, so a saved card is never popped or moved away.
+- `d` asks first: press `d` again to delete the card, or any other key to keep it.
+- `i` writes a new saved card. `prefix` + `A` always writes a card for the window.
+
+`c` copies a card from one list to the bottom of the other and leaves the original where it is. In the window's cards, `c` saves the card for later. In the saved cards, `c` adds the card to this window's stack, so you can queue it up like any other card. The copy is a new card created at that moment.
+
 ## Status line
 
-Put `#{cuecard}` in a status format to show how many cards are waiting. It shows `cue:2` when the window has two cards, and nothing when it has none.
+Put `#{cuecard}` in a status format to show how many cards are waiting. It shows `cue:2` when the window has two cards, and nothing when it has none. Saved cards are not counted.
 
 ```tmux
 set -g status-right '#{cuecard} %H:%M'
@@ -120,13 +138,15 @@ set -g @cuecard-status-format '#{?#{@cuecard-count},#[fg=yellow]● #{@cuecard-c
 
 ## Storage
 
-Each card is a plain file under `${XDG_STATE_HOME:-~/.local/state}/tmux-cuecard/<server>/<window_id>/`. The file is named `<order>.<created>.<random>`, where `<order>` sets its place in the stack and `<created>` is its creation time in epoch seconds. Moving a card to another window moves its file to that window's directory with a new `<order>`.
+Each window card is a plain file under `${XDG_STATE_HOME:-~/.local/state}/tmux-cuecard/<server>/<window_id>/`. The file is named `<order>.<created>.<random>`, where `<order>` sets its place in the stack and `<created>` is its creation time in epoch seconds. Moving a card to another window moves its file to that window's directory with a new `<order>`.
 
-Cards belong to the tmux window, not the drawer:
+Window cards belong to the tmux window, not the drawer:
 
 - Closing the drawer, or picking a card, keeps every card.
 - Closing a tmux window deletes the cards of that window.
 - Cards do not survive a tmux server restart. The cards of servers that are gone are deleted the next time the plugin loads.
+
+Saved cards are user data, so they live apart from the window cards, in `${XDG_DATA_HOME:-~/.local/share}/tmux-cuecard/saved/`, with files named the same way. The directory is created when you save the first card. Nothing deletes saved cards automatically: only `d` or emptying a card with `e` removes one.
 
 ## License
 
