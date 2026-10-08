@@ -148,6 +148,24 @@ Window cards belong to the tmux window, not the drawer:
 
 Saved cards are user data, so they live apart from the window cards, in `${XDG_DATA_HOME:-~/.local/share}/tmux-cuecard/saved/`, with files named the same way. The directory is created when you save the first card. Nothing deletes saved cards automatically: only `d` or emptying a card with `e` removes one.
 
+## Development
+
+`tests/run.sh` runs the integration tests. A harness server runs a real tmux client in a pane and types into it with `send-keys`, so the tests see what you would see, the drawer and the status line included. Every server uses its own `tcc-test-<pid>-*` socket, and `HOME`, `XDG_STATE_HOME` and `XDG_DATA_HOME` point into a scratch directory, so the default server and your own cards are never touched. Pass the name of a file in `tests/cases/`, such as `drawer`, to run only the tests in that file, or any other part of a test name to run only the matching tests.
+
+```bash
+tests/run.sh
+tests/run.sh drawer
+tests/run.sh paste
+```
+
+The tests live in `tests/cases/`, one file per area. They are run on tmux 3.7b with bash 5.2. To test another tmux build, put a directory with a `tmux` symlink to it first in `PATH`:
+
+```bash
+mkdir -p /tmp/tmux-3.3-bin
+ln -sf /path/to/tmux-3.3 /tmp/tmux-3.3-bin/tmux
+PATH=/tmp/tmux-3.3-bin:$PATH tests/run.sh
+```
+
 ## License
 
 [MIT](LICENSE)
