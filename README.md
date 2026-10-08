@@ -5,22 +5,23 @@ Keep prompts you plan to send later on cue cards, one stack per tmux window, and
 Cards live in a drawer that slides in from the right edge of the terminal.
 
 ```
-┌─ cuecard 0:claude ─────────┐
-│ Write the PR description … │
-│ Run the tests after the r… │
-├────────────────────────────┤
-│ Write the PR description   │
-│ in English.                │
-├────────────────────────────┤
-│ Enter pick   p pop   i new │
-│ e edit   d delete   q quit │
-└────────────────────────────┘
+┌─ cuecard 0:claude ───────────┐
+│ Run the tests af 10-08 09:12 │
+│ Write the PR des 10-08 09:15 │
+│──────────────────────────────│
+│Run the tests after the merge │
+│and fix any failures.         │
+│──────────────────────────────│
+│ Enter pick   p pop   i new   │
+│ e edit   d delete   q quit   │
+│ J/K move                     │
+└──────────────────────────────┘
 ```
 
 ## Requirements
 
 - tmux 3.3 or later
-- bash 4 or later (on macOS, install a newer bash with Homebrew)
+- bash 4.2 or later (on macOS, install a newer bash with Homebrew)
 - Vim 8.1 or later, for `vim` input and for editing multi-line cards
 
 ## Installation
@@ -66,6 +67,7 @@ Inside the drawer:
 | Key              | Action                                   |
 | ---------------- | ---------------------------------------- |
 | `↑` `↓`, `k` `j` | Move the selection                       |
+| `K` `J`          | Move the card up or down                 |
 | `Enter`          | Pick: paste the card and keep it         |
 | `p`              | Pop: paste the card and remove it        |
 | `i`              | Write a new card                         |
@@ -75,7 +77,7 @@ Inside the drawer:
 
 With `box` input, `e` still opens vim for a card with more than one line.
 
-The newest card is at the top. The lower half of the drawer previews the selected card in full.
+Cards are listed oldest first: the top card is next in line, and a new card goes to the bottom. `K` and `J` change a card's place in line, and the new order is kept. Each row shows when the card was created, unless the drawer is too narrow for it. The lower half of the drawer previews the selected card in full.
 
 Cards are pasted into the pane that was active when the drawer opened. The paste uses bracketed paste and never presses Enter, so a multi-line card lands in the prompt as one block and waits for you to review and send it.
 
@@ -115,7 +117,7 @@ set -g @cuecard-status-format '#{?#{@cuecard-count},#[fg=yellow]● #{@cuecard-c
 
 ## Storage
 
-Each card is a plain file under `${XDG_STATE_HOME:-~/.local/state}/tmux-cuecard/<server>/<window_id>/`.
+Each card is a plain file under `${XDG_STATE_HOME:-~/.local/state}/tmux-cuecard/<server>/<window_id>/`. The file is named `<order>.<created>.<random>`, where `<order>` sets its place in the stack and `<created>` is its creation time in epoch seconds.
 
 Cards belong to the tmux window, not the drawer:
 

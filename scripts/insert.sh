@@ -19,5 +19,7 @@ has_text "$draft" || exit 0
 
 dir=$(window_dir "$window_id")
 mkdir -p "$dir"
-mv "$draft" "$(mktemp "$dir/$(date +%s).XXXXXX")"
+printf -v now '%(%s)T' -1
+card_name "$(next_order "$dir")" "$now" XXXXXX
+mv "$draft" "$(mktemp "$dir/$CARD_NAME")"
 update_count "$window_id"

@@ -43,6 +43,41 @@ update_count() {
   fi
 }
 
+# A card file is named <order>.<created>.<rand>, and the glob order of the
+# names is the order of the stack. Cards written before the stack could be
+# reordered are named <created>.<rand>, so their creation time doubles as
+# the order. Sets CARD_ORDER, CARD_CREATED and CARD_RAND.
+parse_card() {
+  local name=${1##*/}
+  CARD_ORDER=${name%%.*}
+  CARD_CREATED=$CARD_ORDER
+  CARD_RAND=${name#*.}
+  if [[ $CARD_RAND == *.* ]]; then
+    CARD_CREATED=${CARD_RAND%%.*}
+    CARD_RAND=${CARD_RAND#*.}
+  fi
+  # A stray file must not abort the script with an arithmetic error.
+  [[ $CARD_ORDER =~ ^[0-9]+$ ]] || CARD_ORDER=0
+  [[ $CARD_CREATED =~ ^[0-9]+$ ]] || CARD_CREATED=0
+}
+
+# Zero-padding keeps the glob order of the names equal to the numeric order.
+# Sets CARD_NAME.
+card_name() {
+  printf -v CARD_NAME '%010d.%s.%s' $(( 10#$1 )) "$2" "$3"
+}
+
+# Prints the order that puts a new card below every card in directory $1.
+next_order() {
+  local card max=0
+  for card in "$1"/*; do
+    [[ -e $card ]] || continue
+    parse_card "$card"
+    (( 10#$CARD_ORDER > max )) && max=$(( 10#$CARD_ORDER ))
+  done
+  echo $(( max + 1 ))
+}
+
 has_text() {
   grep -q '[^[:space:]]' "$1"
 }
