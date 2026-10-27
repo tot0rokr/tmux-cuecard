@@ -323,7 +323,7 @@ move_rows_are() {
 
 # The footer of the card list, with $1 in place of its first line.
 move_list_footer() {
-  printf ' %s| e edit   d delete   q quit| c save   Tab saved| J/K move   m to window' \
+  printf ' %s| e edit   d delete   q quit| c save   Tab saved   y yank| J/K move   m to window' \
     "${1:-Enter pick   p pop   i new}"
 }
 

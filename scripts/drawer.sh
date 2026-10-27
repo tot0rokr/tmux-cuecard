@@ -25,9 +25,9 @@ dates=()
 selected=0
 top=0
 window_footer=(' Enter pick   p pop   i new' ' e edit   d delete   q quit'
-  ' c save   Tab saved' ' J/K move   m to window')
+  ' c save   Tab saved   y yank' ' J/K move   m to window')
 saved_footer=(' Enter pick   c to window' ' i new   e edit   q quit'
-  ' J/K move   Tab window' ' d delete')
+  ' J/K move   Tab window' ' d delete   y yank')
 window_empty=(' (empty) press i to add')
 saved_empty=(' (empty) press i to add' ' or c in the window view')
 # Shown in place of the first footer line until the next key.
@@ -452,6 +452,31 @@ paste_selected() {
   tmux paste-buffer -p -d -b cuecard -t "$pane_id"
 }
 
+# Copies the selected card the way copy-pipe in copy mode does: it becomes
+# the newest paste buffer, which set-clipboard also sends to the clipboard of
+# the terminal, and copy-command, if set, gets it on stdin. The card stays,
+# so this works the same in both views.
+yank_selected() {
+  local text command
+  (( ${#cards[@]} )) && refresh_selected || return
+  # Another drawer can remove the card after it is found.
+  if ! { text=$(<"${cards[selected]}"); } 2>/dev/null; then
+    notice='Card is gone'
+    load_cards
+    return
+  fi
+  tmux set-buffer -w -- "$text"
+  command=$(get_tmux_option copy-command '')
+  if [[ -n $command ]]; then
+    # Runs in the background like a copy-pipe job, so a slow command does
+    # not hold up the drawer. A helper such as xclip stays behind to serve
+    # the selection, so it must not die when the popup's terminal closes.
+    ( trap '' HUP; printf '%s' "$text" | sh -c "$command" ) \
+      </dev/null >/dev/null 2>&1 &
+  fi
+  notice='Yanked'
+}
+
 # The box holds a single line, so multi-line cards always open in vim.
 edit_selected() {
   local card=${cards[selected]} lines what=card
@@ -637,6 +662,9 @@ main() {
         ;;
       c)
         copy_selected
+        ;;
+      y)
+        yank_selected
         ;;
       '')
         (( ${#cards[@]} )) && refresh_selected || continue

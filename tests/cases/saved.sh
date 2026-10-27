@@ -1,9 +1,10 @@
 # Saved cards: the collection every window shares, shown in the drawer's
 # saved view. The tab bar, switching views, writing, pasting, deleting,
-# editing, reordering and copying saved cards, and where they are kept.
+# editing, reordering, copying and yanking saved cards, and where they are
+# kept.
 
-saved_window_footer=' Enter pick   p pop   i new| e edit   d delete   q quit| c save   Tab saved| J/K move   m to window'
-saved_view_footer=' Enter pick   c to window| i new   e edit   q quit| J/K move   Tab window| d delete'
+saved_window_footer=' Enter pick   p pop   i new| e edit   d delete   q quit| c save   Tab saved   y yank| J/K move   m to window'
+saved_view_footer=' Enter pick   c to window| i new   e edit   q quit| J/K move   Tab window| d delete   y yank'
 saved_new_prompt='New saved card (Enter saves, empty cancels)'
 # A drawer of the default 40% on a 100-column client is 38 columns wide,
 # which wraps the input box prompts, so the tests that read them widen it.
@@ -289,7 +290,7 @@ test_saved_d_asks_first_and_only_a_second_d_deletes() {
   make_card "$SAVED_DIR" 0000000001.1759900000.aaaaaa 'keep me'
   make_card "$SAVED_DIR" 0000000002.1759900060.bbbbbb 'delete me'
   make_card "$SAVED_DIR" 0000000003.1759900120.cccccc 'last'
-  local asking=' Press d again to delete| i new   e edit   q quit| J/K move   Tab window| d delete'
+  local asking=' Press d again to delete| i new   e edit   q quit| J/K move   Tab window| d delete   y yank'
   saved_open_view || return
   press j
   wait_for selected_is 'delete me' || fail "selected: '$(selected)'" || return
@@ -419,6 +420,28 @@ test_saved_c_in_the_saved_view_adds_the_card_to_the_window() {
     fail "saved cards changed: $(card_names "$SAVED_DIR")" || return
   [[ $(popup_line 1) == ' window 2   saved 1' ]] || fail "tab bar: '$(popup_line 1)'" || return
   saved_view_is saved || fail "c switched the view to '$(saved_active_tab)'"
+}
+
+# --- yanking -----------------------------------------------------------------
+
+test_saved_y_yanks_the_saved_card_and_keeps_it() {
+  start_host || return
+  local before
+  make_card "$SAVED_DIR" 0000000001.1759900000.aaaaaa 'first template'
+  make_card "$SAVED_DIR" 0000000002.1759900060.bbbbbb 'second template'
+  before=$(saved_fingerprint "$SAVED_DIR")
+  saved_open_view || return
+  press j
+  wait_for selected_is 'second template' || fail "selected: '$(selected)'" || return
+  press y
+  wait_for saved_first_footer_line_is ' Yanked' ||
+    fail "footer after y: '$(footer)'" || return
+  [[ $(host save-buffer - 2>&1) == 'second template' ]] ||
+    fail "buffer: '$(host save-buffer - 2>&1)', want 'second template'" || return
+  [[ $(saved_fingerprint "$SAVED_DIR") == "$before" ]] ||
+    fail "saved cards changed: $(card_names "$SAVED_DIR")" || return
+  [[ -z $(card_names "$(cards_dir)") ]] || fail "window cards: $(card_names "$(cards_dir)")" || return
+  saved_view_is saved || fail "y switched the view to '$(saved_active_tab)'"
 }
 
 # --- storage -----------------------------------------------------------------

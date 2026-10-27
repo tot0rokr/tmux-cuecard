@@ -1,5 +1,5 @@
-# The drawer: listing, picking, popping, editing, deleting and reordering
-# the cards of a window.
+# The drawer: listing, picking, popping, yanking, editing, deleting and
+# reordering the cards of a window.
 
 test_drawer_lists_cards_oldest_first_with_the_top_one_selected() {
   start_host || return
@@ -122,6 +122,37 @@ drawer_vim_shown() {
   popup_lines | grep -qx '~ *'
 }
 
+# od -c notation of $1, to compare it with drawer_buffer.
+drawer_bytes() {
+  printf '%s' "$1" | od -An -c | tr -s ' ' | sed 's/^ //' | paste -sd ' ' -
+}
+
+# The newest automatic buffer of the host server, or of the harness server
+# with harness as $1, in od -c notation, so a newline at the end shows.
+# Without -b, save-buffer skips named buffers, as prefix + ] does.
+drawer_buffer() {
+  local server=(host)
+  [[ ${1-} == harness ]] && server=("${HARNESS[@]}")
+  "${server[@]}" save-buffer - 2>/dev/null | od -An -c | tr -s ' ' |
+    sed 's/^ //' | paste -sd ' ' -
+}
+
+# The newest automatic buffer of server ${2:-host} holds exactly $1.
+drawer_buffer_is() {
+  [[ $(drawer_buffer "${2-}") == "$(drawer_bytes "$1")" ]]
+}
+
+# File $1 holds exactly $2.
+drawer_file_is() {
+  [[ -e $1 ]] && cmp -s "$1" <(printf '%s' "$2")
+}
+
+# Every card of the agent window by name and checksum.
+drawer_fingerprint() {
+  card_names "$(cards_dir)"
+  cat "$(cards_dir)"/* | cksum
+}
+
 # --- e: edit -----------------------------------------------------------------
 
 test_drawer_e_edits_a_one_line_card_in_a_prefilled_box() {
@@ -183,6 +214,59 @@ test_drawer_e_on_a_multi_line_card_opens_vim() {
     fail "names: $(card_names "$(cards_dir)"), want them unchanged: $names" || return
   [[ $(cat "$(cards_dir)/${names%% *}") == $'first line\nsecond line' ]] ||
     fail "card text: $(cat "$(cards_dir)/${names%% *}"), want it unchanged"
+}
+
+# --- y: yank -----------------------------------------------------------------
+
+# With set-clipboard on, the harness takes the clipboard escape the host
+# client sends as a buffer of its own, the way a terminal that supports
+# OSC 52 sets its clipboard.
+test_drawer_y_yanks_the_card_to_a_buffer_and_the_clipboard_and_keeps_it() {
+  local text=$'yank me\n\tindented  \nlast line' before
+  start_host "set -as terminal-features ',*:clipboard'" || return
+  "${HARNESS[@]}" set-option -s set-clipboard on
+  drawer_stack "$(cards_dir)" 'first' "$text" 'third'
+  before=$(drawer_fingerprint)
+  open_drawer || return
+  press j
+  wait_for selected_is 'yank me' || fail "selected: $(selected), want: yank me" || return
+  mark_paste
+  press y
+  wait_for footer_is ' Yanked| e edit   d delete   q quit| c save   Tab saved   y yank| J/K move   m to window' ||
+    fail "footer after y: $(footer)" || return
+  # Like a paste, the yank leaves out the newline at the end of the card.
+  drawer_buffer_is "$text" ||
+    fail "buffer: $(drawer_buffer), want: $(drawer_bytes "$text")" || return
+  wait_for drawer_buffer_is "$text" harness ||
+    fail "clipboard: $(drawer_buffer harness), want: $(drawer_bytes "$text")" || return
+  drawer_drawn || fail "y closed the drawer" || return
+  selected_is 'yank me' || fail "selected after y: $(selected), want: yank me" || return
+  [[ -z $(pasted) ]] || fail "pasted: $(pasted)" || return
+  [[ $(drawer_fingerprint) == "$before" ]] || fail "cards changed: $(card_names "$(cards_dir)")"
+}
+
+test_drawer_y_pipes_the_card_to_copy_command() {
+  local text=$'piped\nsecond line' copied
+  start_host || return
+  copied="$CASE_DIR/copied"
+  host set-option -s copy-command "cat > '$copied'"
+  drawer_stack "$(cards_dir)" "$text"
+  open_drawer || return
+  press y
+  wait_for drawer_file_is "$copied" "$text" ||
+    fail "copy-command got: $(od -An -c "$copied" 2>/dev/null), want: $(drawer_bytes "$text")" || return
+  drawer_buffer_is "$text" || fail "buffer: $(drawer_buffer), want: $(drawer_bytes "$text")"
+}
+
+# i opens the input box only after the drawer has read y.
+test_drawer_y_on_an_empty_stack_yanks_nothing() {
+  start_host || return
+  open_drawer || return
+  press y
+  press i
+  wait_for screen_has 'New card (Enter saves, empty cancels)' ||
+    fail "i after y did not open the input box" || return
+  [[ -z $(host list-buffers) ]] || fail "buffers: $(host list-buffers)"
 }
 
 # --- d, i, q -----------------------------------------------------------------
@@ -437,7 +521,7 @@ test_drawer_window_footer_lists_the_keys() {
   start_host || return
   drawer_stack "$(cards_dir)" 'one'
   open_drawer || return
-  want=' Enter pick   p pop   i new| e edit   d delete   q quit| c save   Tab saved| J/K move   m to window'
+  want=' Enter pick   p pop   i new| e edit   d delete   q quit| c save   Tab saved   y yank| J/K move   m to window'
   wait_for footer_is "$want" || fail "footer: $(footer), want: $want"
 }
 

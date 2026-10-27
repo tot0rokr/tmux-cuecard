@@ -15,7 +15,7 @@ Cards live in a drawer that slides in from the right edge of the terminal. Promp
 │──────────────────────────────│
 │ Enter pick   p pop   i new   │
 │ e edit   d delete   q quit   │
-│ c save   Tab saved           │
+│ c save   Tab saved   y yank  │
 │ J/K move   m to window       │
 └──────────────────────────────┘
 ```
@@ -73,6 +73,7 @@ Inside the drawer:
 | `m`              | Move the card to another window (window cards only)    |
 | `Enter`          | Pick: paste the card and keep it                       |
 | `p`              | Pop: paste the card and remove it (window cards only)  |
+| `y`              | Yank: copy the card to the clipboard and keep it       |
 | `i`              | Write a new card                                       |
 | `e`              | Edit the card (an empty card is removed)               |
 | `d`              | Delete the card (saved cards ask first)                |
@@ -87,6 +88,13 @@ Cards are listed oldest first: the top card is next in line, and a new card goes
 `m` lists the other windows of the tmux server, with the number of cards each one holds. Pick a window with `Enter` to move the card to the bottom of its stack; the card keeps its creation time. `q` or `Esc` goes back to the cards.
 
 Cards are pasted into the pane that was active when the drawer opened. The paste uses bracketed paste and never presses Enter, so a multi-line card lands in the prompt as one block and waits for you to review and send it.
+
+`y` yanks the card the way copy mode yanks text: the card becomes the newest paste buffer, which `prefix` + `]` pastes, and tmux copies it to the system clipboard. The drawer stays open and says `Yanked`. How the card reaches the clipboard follows your tmux settings:
+
+- With `set-clipboard` set to `on` or to the default `external`, tmux sends the card to the terminal with the OSC 52 escape sequence. This also works over SSH, as long as the terminal supports OSC 52.
+- If `copy-command` is set, the card is also piped to that command, such as `wl-copy`, `xclip -selection clipboard` or `pbcopy`.
+
+Like a paste, a yank leaves out the newline at the end of the card.
 
 ## Saved cards
 
