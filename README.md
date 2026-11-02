@@ -6,7 +6,7 @@ Cards live in a drawer that slides in from the right edge of the terminal. Promp
 
 ```
 ┌─ cuecard 0:claude ───────────┐
-│ window 2   saved 3           │
+│ window 2   saved 3   trash 1 │
 │ Run the tests af 10-08 09:12 │
 │ Write the PR des 10-08 09:15 │
 │──────────────────────────────│
@@ -15,8 +15,8 @@ Cards live in a drawer that slides in from the right edge of the terminal. Promp
 │──────────────────────────────│
 │ Enter pick   p pop   i new   │
 │ e edit   d delete   q quit   │
-│ c save   Tab saved   y yank  │
-│ J/K move   m to window       │
+│ c copy   M saved   Tab saved │
+│ J/K move  m window  t trash  │
 └──────────────────────────────┘
 ```
 
@@ -64,26 +64,28 @@ How you write a card depends on `@cuecard-input`:
 
 Saving an empty card adds nothing.
 
-Inside the drawer:
+Inside the drawer's window and saved views (see [Trash](#trash) for its keys):
 
-| Key              | Action                                                 |
-| ---------------- | ------------------------------------------------------ |
-| `↑` `↓`, `k` `j` | Move the selection                                     |
-| `K` `J`          | Move the card up or down                               |
-| `m`              | Move the card to another window (window cards only)    |
-| `Enter`          | Pick: paste the card and keep it                       |
-| `p`              | Pop: paste the card and remove it (window cards only)  |
-| `y`              | Yank: copy the card to the clipboard and keep it       |
-| `i`              | Write a new card                                       |
-| `e`              | Edit the card (an empty card is removed)               |
-| `d`              | Delete the card (saved cards ask first)                |
-| `c`              | Copy the card between the window and the saved cards   |
-| `Tab`            | Switch between the window's cards and the saved cards  |
-| `q`, `Esc`       | Close the drawer                                       |
+| Key              | Action                                                |
+| ---------------- | ----------------------------------------------------- |
+| `↑` `↓`, `k` `j`  | Move the selection                                    |
+| `K` `J`          | Reorder window or saved cards                         |
+| `m`              | Move to another window (window cards only)             |
+| `Enter`          | Pick: paste and keep the card                          |
+| `p`              | Pop: paste and move to trash (window cards only)        |
+| `y`              | Yank to the clipboard and keep the card                |
+| `i`              | Write a new card                                      |
+| `e`              | Edit; an empty edit keeps the original                 |
+| `d`              | Move to trash (saved cards ask first)                  |
+| `c`              | Copy between window and saved                         |
+| `M`              | Move between window and saved                         |
+| `Tab`            | Switch between window and saved                       |
+| `t`              | Open trash, or return to the previous view             |
+| `q`, `Esc`       | Close the drawer                                      |
 
-With `box` input, `e` still opens vim for a card with more than one line.
+With `box` input, `e` still opens vim for a card with more than one line. In either editor, saving an empty or whitespace-only edit keeps the original card and shows `Empty edit ignored`.
 
-Cards are listed oldest first: the top card is next in line, and a new card goes to the bottom. `K` and `J` change a card's place in line, and the new order is kept. Each row shows when the card was created, unless the drawer is too narrow for it. The lower half of the drawer previews the selected card in full.
+Window and saved cards follow their stack order: the top card is next in line, and a new card goes to the bottom. `K` and `J` change a card's place in line, and the new order is kept. Each row shows when the card was created, unless the drawer is too narrow for it. Trash instead lists the newest discards first and shows discard times. The lower half of the drawer previews the selected card.
 
 `m` lists the other windows of the tmux server, with the number of cards each one holds. Pick a window with `Enter` to move the card to the bottom of its stack; the card keeps its creation time. `q` or `Esc` goes back to the cards.
 
@@ -100,19 +102,38 @@ Like a paste, a yank leaves out the newline at the end of the card.
 
 Saved cards are prompts you keep for good, such as `Run the tests and fix the failures` or `Write the PR description`. Every window, session and tmux server shares the same saved cards, and they survive tmux restarts. They are kept under `${XDG_DATA_HOME:-~/.local/share}/tmux-cuecard/saved/`, and nothing deletes them automatically (see [Storage](#storage)).
 
-The tab bar at the top of the drawer shows the window's cards and the saved cards, with the number of cards in each; a drawer too narrow for both shows only the open one. `Tab` (or `Shift` + `Tab`) switches between them. The drawer always opens on the window's cards, and each list keeps its selection while the drawer is open.
+The tab bar shows the window's cards, saved cards and trash, with the number of cards in each. A drawer too narrow for all three shows only the open view. `Tab` (or `Shift` + `Tab`) switches between window and saved; `t` opens trash. The drawer always opens on the window's cards, and each list keeps its selection while the drawer is open.
 
 The saved cards use the same keys, with a few differences, because they are templates rather than a queue:
 
-- `Enter` pastes the card and keeps it, as always. `p` and `m` do nothing, so a saved card is never popped or moved away.
-- `d` asks first: press `d` again to delete the card, or any other key to keep it.
+- `Enter` pastes the card and keeps it, as always. `p` and lowercase `m` do nothing. Uppercase `M` moves the card into the current window's stack.
+- `d` asks first: press `d` again to move the card to trash, or any other key to keep it.
 - `i` writes a new saved card. `prefix` + `A` always writes a card for the window.
 
 `c` copies a card from one list to the bottom of the other and leaves the original where it is. In the window's cards, `c` saves the card for later. In the saved cards, `c` adds the card to this window's stack, so you can queue it up like any other card. The copy is a new card created at that moment.
 
+`M` moves the card to the bottom of the other list and removes it from its source. A window card becomes a saved card; a saved card becomes a window card. Its contents and creation time are preserved. The move does not put a copy in trash.
+
+To keep a card you wrote in a window, open the drawer, select it and press uppercase `M`. Press `Tab` to find it at the bottom of saved. To bring it back, select it in saved and press `M` again.
+
+## Trash
+
+Trash collects cards removed by `p` or `d`, and cards left in a window when it closes. It is shared across all windows and tmux servers and survives restarts. When an entire tmux server exits, its remaining window cards are collected the next time the plugin loads. Every card left in the window is collected, including cards previously pasted with `Enter`, since picking keeps the card and does not track whether the receiving program used it.
+
+Press `t` inside the drawer to open trash. Cards are listed by discard time, newest first; each row shows the discard time and the preview shows the original list and the reason. Press `t`, `Tab` or `Shift` + `Tab` to return to the previous window or saved view.
+
+- `r` restores a card to the current window, or to saved if it came from saved. The card goes to the bottom of that list, keeps its creation time and leaves trash.
+- `d` permanently deletes the selected card after a second `d`.
+- `D` empties trash after a second `D`. It removes only the cards present when confirmation began; cards arriving during confirmation stay.
+- Any other key cancels a deletion confirmation without performing another action.
+- `Enter` pastes the card and `y` yanks it; both keep it in trash.
+- `q` or `Esc` closes the drawer. Trash does not allow adding, editing, reordering or moving cards with `M` or `m`.
+
+There is no automatic expiry or size limit. If archiving a card fails, its original is kept; if a pop cannot paste, it keeps the card in its window.
+
 ## Status line
 
-Put `#{cuecard}` in a status format to show how many cards are waiting. It shows `cue:2` when the window has two cards, and nothing when it has none. Saved cards are not counted.
+Put `#{cuecard}` in a status format to show how many cards are waiting. It shows `cue:2` when the window has two cards, and nothing when it has none. Saved cards and trash are not counted.
 
 ```tmux
 set -g status-right '#{cuecard} %H:%M'
@@ -151,10 +172,12 @@ Each window card is a plain file under `${XDG_STATE_HOME:-~/.local/state}/tmux-c
 Window cards belong to the tmux window, not the drawer:
 
 - Closing the drawer, or picking a card, keeps every card.
-- Closing a tmux window deletes the cards of that window.
-- Cards do not survive a tmux server restart. The cards of servers that are gone are deleted the next time the plugin loads.
+- Closing a tmux window moves its remaining cards to trash.
+- A tmux server restart creates a new window stack. Cards of servers that are gone are moved to trash the next time the plugin loads.
 
-Saved cards are user data, so they live apart from the window cards, in `${XDG_DATA_HOME:-~/.local/share}/tmux-cuecard/saved/`, with files named the same way. The directory is created when you save the first card. Nothing deletes saved cards automatically: only `d` or emptying a card with `e` removes one.
+Saved cards are user data, so they live apart from the window cards, in `${XDG_DATA_HOME:-~/.local/share}/tmux-cuecard/saved/`, with files named the same way. The directory is created when you save the first card. Nothing removes saved cards automatically: `d` moves one to trash and `M` moves one to the current window. Empty edits keep the original card.
+
+Trash lives in `${XDG_DATA_HOME:-~/.local/share}/tmux-cuecard/trash/`. Files are named `<discarded>.<created>.<source>.<reason>.<random>`. The two times are epoch seconds, the source is `window` or `saved`, and the reason is `pop`, `delete`, `window-closed` or `server-closed`. Only confirmed `d` or `D` inside trash permanently removes discarded cards.
 
 ## Development
 

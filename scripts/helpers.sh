@@ -26,6 +26,63 @@ saved_dir() {
   echo "${XDG_DATA_HOME:-$HOME/.local/share}/tmux-cuecard/saved"
 }
 
+trash_dir() {
+  echo "${XDG_DATA_HOME:-$HOME/.local/share}/tmux-cuecard/trash"
+}
+
+# Trash names carry the discard time, creation time, source and reason.
+# A fresh suffix distinguishes repeated discards and concurrent writers.
+trash_card() {
+  local card=$1 source=$2 reason=$3 dir now staged name
+  dir=$(trash_dir)
+  mkdir -p "$dir" || return 1
+  printf -v now '%(%s)T' -1
+  parse_card "$card"
+  staged=$(mktemp "$dir/.$now.$CARD_CREATED.$source.$reason.XXXXXX") || return 1
+  name=${staged##*/}
+  finish_card_move "$card" "$staged" "$dir/${name#.}"
+}
+
+parse_trash() {
+  parse_card "$1"
+  TRASH_SOURCE=${CARD_RAND%%.*}
+  TRASH_REASON=${CARD_RAND#*.}
+  TRASH_REASON=${TRASH_REASON%%.*}
+}
+
+trash_window() {
+  local dir=$1 reason=$2 card
+  [[ -d $dir ]] || return 0
+  for card in "$dir"/*; do
+    [[ -f $card ]] || continue
+    trash_card "$card" window "$reason" || return 1
+  done
+  rmdir -- "$dir" 2>/dev/null || [[ ! -d $dir ]]
+}
+
+# A restored card keeps its creation time and gets a normal stack filename.
+restore_card() {
+  local card=$1 dir=$2 staged
+  mkdir -p "$dir" || return 1
+  parse_card "$card"
+  card_name "$(next_order "$dir")" "$CARD_CREATED" XXXXXX
+  staged=$(mktemp "$dir/.$CARD_NAME") || return 1
+  CARD_NAME=${staged##*/}
+  CARD_NAME=${CARD_NAME#.}
+  finish_card_move "$card" "$staged" "$dir/$CARD_NAME"
+}
+
+# Publish complete contents without replacing another card. Keeping the source
+# until publication also covers moves between the state and data filesystems.
+finish_card_move() {
+  local source=$1 staged=$2 target=$3
+  if ! cp -- "$source" "$staged" || ! ln -- "$staged" "$target"; then
+    rm -f -- "$staged"
+    return 1
+  fi
+  rm -f -- "$staged" "$source"
+}
+
 # display-popup does not expand formats in its command, so popup scripts look
 # up the window and pane they were opened from.
 current_window_id() {
@@ -92,12 +149,13 @@ next_order() {
 # <created>.<rand>, so it keeps its creation time and the drawer can still
 # find it. Sets CARD_NAME to its new name.
 move_card() {
-  local card=$1 dir=$2 order
-  mkdir -p "$dir"
+  local card=$1 dir=$2 order staged
+  mkdir -p "$dir" || return 1
   order=$(next_order "$dir")
   parse_card "$card"
   card_name "$order" "$CARD_CREATED" "$CARD_RAND"
-  mv "$card" "$dir/$CARD_NAME"
+  staged=$(mktemp "$dir/.$CARD_NAME.XXXXXX") || return 1
+  finish_card_move "$card" "$staged" "$dir/$CARD_NAME"
 }
 
 # Adds a copy of file $1 to the bottom of the stack in directory $2 as a new

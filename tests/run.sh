@@ -228,7 +228,7 @@ drawer_closed() {
 # tmux draws the popup border before the drawer script draws anything, so
 # a drawer counts as open once its tab bar is on row 1.
 drawer_drawn() {
-  [[ $(popup_line 1) =~ ^\ (window|saved)\ [0-9]+ ]]
+  [[ $(popup_line 1) =~ ^\ (window|saved|trash)\ [0-9]+ ]]
 }
 
 open_drawer() {

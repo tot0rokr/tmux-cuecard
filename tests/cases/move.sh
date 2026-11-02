@@ -277,7 +277,7 @@ test_move_does_nothing_in_the_saved_view() {
   w1=$(new_window w1)
   open_drawer || return
   press Tab
-  wait_for popup_has 'c to window' || fail "Tab did not open the saved cards: row 1 is '$(popup_line 1)'" || return
+  wait_for popup_has 'M to window' || fail "Tab did not open the saved cards: row 1 is '$(popup_line 1)'" || return
   # Had m opened the picker, q would only close the picker.
   press m q
   wait_for drawer_closed || fail "m opened the picker in the saved view" || return
@@ -323,7 +323,7 @@ move_rows_are() {
 
 # The footer of the card list, with $1 in place of its first line.
 move_list_footer() {
-  printf ' %s| e edit   d delete   q quit| c save   Tab saved   y yank| J/K move   m to window' \
+  printf ' %s| e edit   d delete   q quit| c copy   M saved   Tab saved| J/K move  m window  t trash  y yank' \
     "${1:-Enter pick   p pop   i new}"
 }
 

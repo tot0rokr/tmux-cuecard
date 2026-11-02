@@ -3,8 +3,8 @@
 # editing, reordering, copying and yanking saved cards, and where they are
 # kept.
 
-saved_window_footer=' Enter pick   p pop   i new| e edit   d delete   q quit| c save   Tab saved   y yank| J/K move   m to window'
-saved_view_footer=' Enter pick   c to window| i new   e edit   q quit| J/K move   Tab window| d delete   y yank'
+saved_window_footer=' Enter pick   p pop   i new| e edit   d delete   q quit| c copy   M saved   Tab saved| J/K move  m window  t trash  y yank'
+saved_view_footer=' Enter pick   c copy   M to window| i new   e edit   q quit| J/K move   Tab window   t trash| d delete   y yank'
 saved_new_prompt='New saved card (Enter saves, empty cancels)'
 # A drawer of the default 40% on a 100-column client is 38 columns wide,
 # which wraps the input box prompts, so the tests that read them widen it.
@@ -80,8 +80,8 @@ test_saved_tab_bar_shows_both_counts_and_the_drawer_opens_on_the_window_view() {
   make_card "$SAVED_DIR" 0000000002.1759900060.dddddd 'saved two'
   make_card "$SAVED_DIR" 0000000003.1759900120.eeeeee 'saved three'
   open_drawer || return
-  [[ $(popup_line 1) == ' window 2   saved 3' ]] ||
-    fail "tab bar: '$(popup_line 1)', want ' window 2   saved 3'" || return
+  [[ $(popup_line 1) == ' window 2   saved 3   trash 0' ]] ||
+    fail "tab bar: '$(popup_line 1)'" || return
   [[ $(saved_active_tab) == 'window 2' ]] ||
     fail "active tab: '$(saved_active_tab)', want 'window 2'" || return
   [[ $(selected) == 'window one' ]] || fail "selected: '$(selected)'" || return
@@ -89,13 +89,13 @@ test_saved_tab_bar_shows_both_counts_and_the_drawer_opens_on_the_window_view() {
   # another drawer or tmux server saves shows up on the next redraw.
   make_card "$SAVED_DIR" 0000000004.1759900180.ffffff 'saved four'
   press j
-  wait_for popup_line_is 1 ' window 2   saved 4' ||
+  wait_for popup_line_is 1 ' window 2   saved 4   trash 0' ||
     fail "tab bar after another drawer saved a card: '$(popup_line 1)'" || return
   press Tab
   wait_for saved_view_is saved ||
     fail "Tab did not open the saved view, active tab: '$(saved_active_tab)'" || return
-  [[ $(popup_line 1) == ' window 2   saved 4' ]] ||
-    fail "saved view tab bar: '$(popup_line 1)', want ' window 2   saved 4'" || return
+  [[ $(popup_line 1) == ' window 2   saved 4   trash 0' ]] ||
+    fail "saved view tab bar: '$(popup_line 1)'" || return
   [[ $(selected) == 'saved one' ]] || fail "saved view selected: '$(selected)'" || return
   footer_is "$saved_view_footer" ||
     fail "saved view footer: '$(footer)'" || return
@@ -137,32 +137,32 @@ test_saved_tab_and_shift_tab_switch_views_and_each_view_keeps_its_selection() {
   [[ $(selected) == 'w2' ]] || fail "window view came back on '$(selected)', want w2"
 }
 
-# ' window 1' and ' saved 2' with the gap between them take 19 columns.
+# The three tabs with single-digit counts take 29 columns.
 test_saved_narrow_drawer_shows_only_the_active_tab() {
-  start_host 'set -g @cuecard-width 20' || return
+  start_host 'set -g @cuecard-width 30' || return
   make_card "$(cards_dir)" 0000000001.1759900000.aaaaaa 'window card'
   make_card "$SAVED_DIR" 0000000001.1759900000.bbbbbb 'saved one'
   make_card "$SAVED_DIR" 0000000002.1759900060.cccccc 'saved two'
   open_drawer || return
   [[ $(popup_line 1) == ' window 1' ]] ||
-    fail "18 columns, window view tab bar: '$(popup_line 1)', want ' window 1'" || return
+    fail "28 columns, window view tab bar: '$(popup_line 1)', want ' window 1'" || return
   press Tab
   wait_for popup_line_is 1 ' saved 2' ||
-    fail "18 columns, saved view tab bar: '$(popup_line 1)', want ' saved 2'" || return
+    fail "28 columns, saved view tab bar: '$(popup_line 1)', want ' saved 2'" || return
   [[ $(saved_active_tab) == 'saved 2' ]] || fail "active tab: '$(saved_active_tab)'" || return
   close_drawer || return
-  # One column wider, both tabs fit again.
-  host set -g @cuecard-width 21
+  # One column wider, all three tabs fit again.
+  host set -g @cuecard-width 31
   load_plugin
   open_drawer || return
-  [[ $(popup_line 1) == ' window 1   saved 2' ]] ||
-    fail "19 columns, tab bar: '$(popup_line 1)', want ' window 1   saved 2'"
+  [[ $(popup_line 1) == ' window 1   saved 2   trash 0' ]] ||
+    fail "29 columns, tab bar: '$(popup_line 1)'"
 }
 
 test_saved_empty_view_shows_the_hint_and_the_saved_footer() {
   start_host || return
   saved_open_view || return
-  [[ $(popup_line 1) == ' window 0   saved 0' ]] || fail "tab bar: '$(popup_line 1)'" || return
+  [[ $(popup_line 1) == ' window 0   saved 0   trash 0' ]] || fail "tab bar: '$(popup_line 1)'" || return
   [[ $(popup_line 2) == ' (empty) press i to add' ]] || fail "row 2: '$(popup_line 2)'" || return
   [[ $(popup_line 3) == ' or c in the window view' ]] || fail "row 3: '$(popup_line 3)'" || return
   [[ -z $(selected) ]] || fail "selected: '$(selected)', want nothing" || return
@@ -213,7 +213,7 @@ test_saved_i_selects_the_new_saved_card_and_keeps_the_window_count() {
     fail "saved cards: '$(titles "$SAVED_DIR")'" || return
   [[ $(saved_last_card "$SAVED_DIR") == "$SAVED_DIR"/0000000003.* ]] ||
     fail "bottom card: $(saved_last_card "$SAVED_DIR"), want order 0000000003" || return
-  [[ $(popup_line 1) == ' window 1   saved 3' ]] || fail "tab bar: '$(popup_line 1)'" || return
+  [[ $(popup_line 1) == ' window 1   saved 3   trash 0' ]] || fail "tab bar: '$(popup_line 1)'" || return
   [[ $(card_count) == 1 ]] || fail "count after: '$(card_count)', want 1" || return
   [[ $(titles "$(cards_dir)") == 'window card' ]] ||
     fail "window cards: '$(titles "$(cards_dir)")'"
@@ -290,7 +290,7 @@ test_saved_d_asks_first_and_only_a_second_d_deletes() {
   make_card "$SAVED_DIR" 0000000001.1759900000.aaaaaa 'keep me'
   make_card "$SAVED_DIR" 0000000002.1759900060.bbbbbb 'delete me'
   make_card "$SAVED_DIR" 0000000003.1759900120.cccccc 'last'
-  local asking=' Press d again to delete| i new   e edit   q quit| J/K move   Tab window| d delete   y yank'
+  local asking=' Press d again to delete| i new   e edit   q quit| J/K move   Tab window   t trash| d delete   y yank'
   saved_open_view || return
   press j
   wait_for selected_is 'delete me' || fail "selected: '$(selected)'" || return
@@ -311,7 +311,7 @@ test_saved_d_asks_first_and_only_a_second_d_deletes() {
   press d
   wait_for titles_are "$SAVED_DIR" 'keep me|last' ||
     fail "after d d: '$(titles "$SAVED_DIR")', want 'keep me|last'" || return
-  wait_for popup_line_is 1 ' window 0   saved 2' || fail "tab bar: '$(popup_line 1)'" || return
+  wait_for popup_line_is 1 ' window 0   saved 2   trash 1' || fail "tab bar: '$(popup_line 1)'" || return
   [[ $(selected) == 'last' ]] || fail "selected after the delete: '$(selected)'" || return
   footer_is "$saved_view_footer" || fail "footer: '$(footer)'"
 }
@@ -321,7 +321,7 @@ test_saved_e_edits_the_saved_card_in_place() {
   make_card "$SAVED_DIR" 0000000001.1759900000.aaaaaa 'old text'
   saved_open_view || return
   press e
-  wait_for popup_line_is 1 'Edit saved card (Enter saves, empty deletes)' ||
+  wait_for popup_line_is 1 'Edit saved card (Enter saves, empty cancels)' ||
     fail "e box row 1: '$(popup_line 1)'" || return
   wait_for popup_line_is 2 '> old text' || fail "e box row 2: '$(popup_line 2)'" || return
   press C-u
@@ -388,7 +388,7 @@ test_saved_c_in_the_window_view_copies_the_card_to_the_saved_cards() {
   [[ $(saved_fingerprint "$(cards_dir)") == "$before" ]] ||
     fail "window cards changed: $(card_names "$(cards_dir)")" || return
   [[ $(card_count) == 1 ]] || fail "count: '$(card_count)', want 1" || return
-  [[ $(popup_line 1) == ' window 1   saved 2' ]] || fail "tab bar: '$(popup_line 1)'" || return
+  [[ $(popup_line 1) == ' window 1   saved 2   trash 0' ]] || fail "tab bar: '$(popup_line 1)'" || return
   [[ $(saved_active_tab) == 'window 1' ]] || fail "c switched the view to '$(saved_active_tab)'"
 }
 
@@ -418,7 +418,7 @@ test_saved_c_in_the_saved_view_adds_the_card_to_the_window() {
   [[ $(card_count) == 2 ]] || fail "count after: '$(card_count)', want 2" || return
   [[ $(saved_fingerprint "$SAVED_DIR") == "$before" ]] ||
     fail "saved cards changed: $(card_names "$SAVED_DIR")" || return
-  [[ $(popup_line 1) == ' window 2   saved 1' ]] || fail "tab bar: '$(popup_line 1)'" || return
+  [[ $(popup_line 1) == ' window 2   saved 1   trash 0' ]] || fail "tab bar: '$(popup_line 1)'" || return
   saved_view_is saved || fail "c switched the view to '$(saved_active_tab)'"
 }
 
@@ -474,7 +474,7 @@ test_saved_cards_survive_closing_a_window_and_the_plugin_load_cleanup() {
   [[ $(saved_fingerprint "$SAVED_DIR") == "$before" ]] ||
     fail "the plugin load changed the saved cards: '$(card_names "$SAVED_DIR")'" || return
   saved_open_view || return
-  [[ $(popup_line 1) == ' window 0   saved 1' ]] || fail "tab bar: '$(popup_line 1)'" || return
+  [[ $(popup_line 1) == ' window 0   saved 1   trash 2' ]] || fail "tab bar: '$(popup_line 1)'" || return
   [[ $(selected) == 'card of other' ]] || fail "selected: '$(selected)'"
 }
 
@@ -493,7 +493,7 @@ test_saved_cards_survive_a_restart_of_the_host_server() {
   [[ $(saved_fingerprint "$SAVED_DIR") == "$before" ]] ||
     fail "the restart changed the saved cards: '$(card_names "$SAVED_DIR")'" || return
   open_drawer || return
-  [[ $(popup_line 1) == ' window 0   saved 2' ]] || fail "tab bar: '$(popup_line 1)'" || return
+  [[ $(popup_line 1) == ' window 0   saved 2   trash 1' ]] || fail "tab bar: '$(popup_line 1)'" || return
   press Tab
   wait_for saved_view_is saved || fail "Tab: active tab '$(saved_active_tab)'" || return
   [[ $(popup_line 2) == ' saved one'* && $(popup_line 3) == ' saved two'* ]] ||

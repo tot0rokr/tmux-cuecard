@@ -87,7 +87,7 @@ test_count_drops_right_away_when_a_card_is_deleted() {
   wait_for status_text_is '[main] 0:agent*cue:1 cue:1' || fail "status: $(status_text)"
 }
 
-test_count_is_unset_when_the_last_card_is_emptied_with_e() {
+test_count_is_kept_when_an_empty_edit_is_cancelled() {
   start_host || return
   add_card 'only card' || return
   wait_for card_count_is 1 || fail "count: $(card_count), want 1" || return
@@ -97,12 +97,12 @@ test_count_is_unset_when_the_last_card_is_emptied_with_e() {
   # before that would be eaten by the tty line editing.
   wait_for screen_has '> only card' || fail "e did not open the edit box" || return
   press C-u Enter
-  wait_for card_count_unset || fail "count after emptying: '$(card_count)', want unset" ||
-    return
-  wait_for popup_has '(empty)' || fail "the drawer does not show an empty list" || return
+  wait_for popup_has 'Empty edit ignored' || fail 'empty edit notice did not appear' || return
+  card_count_is 1 || fail "count after emptying: '$(card_count)', want 1" || return
+  wait_for selected_is 'only card' || fail "selected: $(selected)" || return
   close_drawer || return
-  [[ -z $(card_names "$(cards_dir)") ]] || fail "cards left: $(card_names "$(cards_dir)")" || return
-  wait_for status_text_is '[main] 0:agent*' || fail "status: $(status_text), want no count"
+  titles_are "$(cards_dir)" 'only card' || fail "cards: $(titles "$(cards_dir)")" || return
+  wait_for status_text_is '[main] 0:agent*cue:1 cue:1' || fail "status: $(status_text)"
 }
 
 test_plugin_load_syncs_counts_with_the_cards_on_disk() {

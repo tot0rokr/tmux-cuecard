@@ -15,4 +15,7 @@ if window_exists "$window_id"; then
   exit 0
 fi
 
-rm -rf "$(window_dir "$window_id")"
+if ! trash_window "$(window_dir "$window_id")" window-closed; then
+  tmux display-message 'cuecard: could not move closed window cards to trash'
+  exit 1
+fi

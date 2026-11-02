@@ -4,15 +4,20 @@ CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$CURRENT_DIR/scripts"
 source "$SCRIPTS_DIR/helpers.sh"
 
-# Hooks do not run when the server itself exits, so drop the cards of
-# servers that are gone.
+# Hooks do not run when the server itself exits, so recover its cards on load.
 remove_dead_server_dirs() {
-  local dir pid
+  local dir pid window
   for dir in "$(store_root)"/[0-9]*-[0-9]*; do
     [[ -d $dir ]] || continue
     pid=${dir##*/}
     pid=${pid%%-*}
-    kill -0 "$pid" 2>/dev/null || rm -rf "$dir"
+    kill -0 "$pid" 2>/dev/null && continue
+    for window in "$dir"/@*; do
+      if ! trash_window "$window" server-closed; then
+        tmux display-message 'cuecard: could not move old window cards to trash'
+      fi
+    done
+    rmdir -- "$dir" 2>/dev/null
   done
 }
 

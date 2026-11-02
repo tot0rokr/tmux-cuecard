@@ -8,14 +8,13 @@ pane_id=$(current_pane_id)
 window_id=$(current_window_id)
 input=$(input_mode) || exit 1
 
-# The drawer shows one of two views: the cards of this window, or the saved
-# cards that every window shares. It opens on the window view, and each view
-# keeps its own selection and scroll while the drawer is open.
+# Each view keeps its selection and scroll while the drawer is open.
 view=window
+previous_view=window
 declare -A view_dir=([window]="$(window_dir "$window_id")"
-  [saved]="$(saved_dir)")
-declare -A view_selected=([window]=0 [saved]=0)
-declare -A view_top=([window]=0 [saved]=0)
+  [saved]="$(saved_dir)" [trash]="$(trash_dir)")
+declare -A view_selected=([window]=0 [saved]=0 [trash]=0)
+declare -A view_top=([window]=0 [saved]=0 [trash]=0)
 declare -A view_card=()
 dir=${view_dir[window]}
 
@@ -25,13 +24,17 @@ dates=()
 selected=0
 top=0
 window_footer=(' Enter pick   p pop   i new' ' e edit   d delete   q quit'
-  ' c save   Tab saved   y yank' ' J/K move   m to window')
-saved_footer=(' Enter pick   c to window' ' i new   e edit   q quit'
-  ' J/K move   Tab window' ' d delete   y yank')
+  ' c copy   M saved   Tab saved' ' J/K move  m window  t trash  y yank')
+saved_footer=(' Enter pick   c copy   M to window' ' i new   e edit   q quit'
+  ' J/K move   Tab window   t trash' ' d delete   y yank')
+trash_footer=(' Enter pick   r restore' ' d delete   D empty trash'
+  ' y yank   t back   q quit')
 window_empty=(' (empty) press i to add')
 saved_empty=(' (empty) press i to add' ' or c in the window view')
+trash_empty=(' (trash is empty)')
 # Shown in place of the first footer line until the next key.
 notice=
+draft=
 
 windows=()
 window_labels=()
@@ -48,25 +51,31 @@ sanitize() {
 # Cards in stack order, top first. Titles are the first non-blank line of
 # each card.
 load_cards() {
-  local file line date
+  local file line date epoch i index files=("$dir"/*)
   cards=()
   titles=()
   dates=()
-  for file in "$dir"/*; do
+  for (( i = 0; i < ${#files[@]}; i++ )); do
+    index=$i
+    [[ $view == trash ]] && index=$(( ${#files[@]} - i - 1 ))
+    file=${files[index]}
+    [[ -f $file ]] || continue
     line=
     while IFS= read -r line; do
       [[ $line == *[![:space:]]* ]] && break
     done < "$file"
     sanitize "$line"
     parse_card "$file"
-    printf -v date '%(%m-%d %H:%M)T' $(( 10#$CARD_CREATED ))
+    epoch=$CARD_CREATED
+    [[ $view == trash ]] && epoch=$CARD_ORDER
+    printf -v date '%(%m-%d %H:%M)T' $(( 10#$epoch ))
     cards+=("$file")
     titles+=("$SANITIZED")
     dates+=("$date")
   done
   (( selected >= ${#cards[@]} )) && selected=$(( ${#cards[@]} - 1 ))
   (( selected < 0 )) && selected=0
-  [[ $view == saved ]] || update_count "$window_id"
+  [[ $view != window ]] || update_count "$window_id"
 }
 
 # A drawer on another client, or for the saved cards one on another tmux
@@ -245,6 +254,10 @@ draw_below_list() {
   preview_bottom=$(( rows - $# - 1 ))
   if [[ -n $card ]]; then
     mapfile -t lines < "$card"
+    if [[ $view == trash ]]; then
+      parse_trash "$card"
+      lines=("$TRASH_SOURCE / ${TRASH_REASON//-/ }" '' "${lines[@]}")
+    fi
     for line in "${lines[@]}"; do
       sanitize "$line"
       line=$SANITIZED
@@ -283,18 +296,19 @@ draw_below_list() {
 # Draws the tab bar on row 1: each view with its number of cards, the
 # active one in bold and the other dimmed. Another drawer can change the
 # cards of the hidden view, so their number is read from its directory. A
-# drawer too narrow for both shows only the active one, since clipping the
+# drawer too narrow for all tabs shows only the active one, since clipping the
 # bar could cut away the very view that is open.
 draw_tabs() {
-  local cols=$1 other=saved files names name gap=
+  local cols=$1 files names name gap= width=0
   local -A label
-  [[ $view == saved ]] && other=window
-  files=("${view_dir[$other]}"/*)
-  label[$view]=" $view ${#cards[@]}"
-  label[$other]=" $other ${#files[@]}"
-  names=(window saved)
+  names=(window saved trash)
+  for name in "${names[@]}"; do
+    files=("${view_dir[$name]}"/*)
+    label[$name]=" $name ${#files[@]}"
+    width=$(( width + ${#label[$name]} + 2 ))
+  done
   # The labels are ASCII, so their length is their width.
-  (( ${#label[window]} + 2 + ${#label[saved]} > cols )) && names=("$view")
+  (( width - 2 > cols )) && names=("$view")
   goto 1
   for name in "${names[@]}"; do
     if [[ $name == "$view" ]]; then
@@ -313,7 +327,10 @@ draw() {
   local rows cols count row i footer empty
   read -r rows cols < <(stty size)
   count=${#cards[@]}
-  if [[ $view == saved ]]; then
+  if [[ $view == trash ]]; then
+    footer=("${trash_footer[@]}")
+    empty=("${trash_empty[@]}")
+  elif [[ $view == saved ]]; then
     footer=("${saved_footer[@]}")
     empty=("${saved_empty[@]}")
   else
@@ -448,14 +465,16 @@ with_terminal_restored() {
 }
 
 paste_selected() {
-  tmux set-buffer -b cuecard -- "$(<"${cards[selected]}")"
+  local text
+  text=$(<"${cards[selected]}") || return 1
+  tmux set-buffer -b cuecard -- "$text" || return 1
   tmux paste-buffer -p -d -b cuecard -t "$pane_id"
 }
 
 # Copies the selected card the way copy-pipe in copy mode does: it becomes
 # the newest paste buffer, which set-clipboard also sends to the clipboard of
 # the terminal, and copy-command, if set, gets it on stdin. The card stays,
-# so this works the same in both views.
+# so this works the same in every view.
 yank_selected() {
   local text command
   (( ${#cards[@]} )) && refresh_selected || return
@@ -479,17 +498,41 @@ yank_selected() {
 
 # The box holds a single line, so multi-line cards always open in vim.
 edit_selected() {
-  local card=${cards[selected]} lines what=card
+  local card=${cards[selected]} lines what=card before
   [[ $view == saved ]] && what='saved card'
   mapfile -t lines < "$card"
-  if [[ $input == box ]] && (( ${#lines[@]} <= 1 )); then
-    read_box "Edit $what (Enter saves, empty deletes)" "${lines[0]-}" ||
-      return
-    printf '%s\n' "$BOX_TEXT" > "$card"
-  else
-    edit_in_vim "$card"
+  draft=$(mktemp) || return
+  if ! cp -- "$card" "$draft"; then
+    rm -f -- "$draft"
+    draft=
+    return
   fi
-  has_text "$card" || rm -f "$card"
+  before=$(cksum < "$draft")
+  if [[ $input == box ]] && (( ${#lines[@]} <= 1 )); then
+    if ! read_box "Edit $what (Enter saves, empty cancels)" "${lines[0]-}"; then
+      rm -f -- "$draft"
+      draft=
+      return
+    fi
+    printf '%s\n' "$BOX_TEXT" > "$draft"
+  else
+    if ! edit_in_vim "$draft"; then
+      rm -f -- "$draft"
+      draft=
+      return
+    fi
+  fi
+  if ! has_text "$draft"; then
+    notice='Empty edit ignored'
+  elif [[ $(cksum < "$draft") == "$before" ]]; then
+    :
+  elif ! refresh_selected "$card"; then
+    notice='Card is gone, edit not saved'
+  elif ! cp -- "$draft" "${cards[selected]}"; then
+    notice='Could not save the edit'
+  fi
+  rm -f -- "$draft"
+  draft=
 }
 
 # The drawer stays open when its window closes, but the cleanup hook of the
@@ -593,22 +636,81 @@ copy_selected() {
   fi
 }
 
+transfer_selected() {
+  (( ${#cards[@]} )) && refresh_selected || return
+  if [[ $view == saved ]]; then
+    window_open || return
+    if move_to_window "${cards[selected]}" "$window_id"; then
+      notice='Moved to window'
+    else
+      notice='Could not move the card'
+    fi
+  elif move_card "${cards[selected]}" "${view_dir[saved]}"; then
+    notice='Moved to saved'
+  else
+    notice='Could not move the card'
+  fi
+  load_cards
+}
+
+restore_selected() {
+  local target restored
+  (( ${#cards[@]} )) && refresh_selected || return
+  parse_trash "${cards[selected]}"
+  target=$TRASH_SOURCE
+  [[ $target != window ]] || window_open || return
+  if ! restore_card "${cards[selected]}" "${view_dir[$target]}"; then
+    notice='Could not restore the card'
+    load_cards
+    return
+  fi
+  restored="${view_dir[$target]}/$CARD_NAME"
+  notice="Restored to $target"
+  if [[ $target == window ]]; then
+    if window_exists "$window_id"; then
+      update_count "$window_id"
+    else
+      if [[ -f $restored ]]; then
+        trash_card "$restored" window window-closed
+      fi
+      notice='Window is gone'
+    fi
+  fi
+  load_cards
+}
+
 # Saved cards are meant to last, so deleting one takes a second d right after
 # the first. Any other key cancels and does nothing else.
 confirm_delete() {
-  notice='Press d again to delete'
+  local key=${1:-d}
+  notice=${2:-Press d again to delete}
   draw
   read_key
   notice=
-  [[ $KEY == d ]]
+  [[ $KEY == "$key" ]]
 }
 
 delete_selected() {
   (( ${#cards[@]} )) && refresh_selected || return
-  if [[ $view == saved ]]; then
+  if [[ $view == trash ]]; then
+    confirm_delete d 'Press d again to delete permanently' && refresh_selected || return
+    rm -f -- "${cards[selected]}" || notice='Could not delete the card'
+  elif [[ $view == saved ]]; then
     confirm_delete && refresh_selected || return
+    trash_card "${cards[selected]}" "$view" delete || notice='Could not move card to trash'
+  else
+    trash_card "${cards[selected]}" "$view" delete || notice='Could not move card to trash'
   fi
-  rm -f "${cards[selected]}"
+  load_cards
+}
+
+empty_trash() {
+  load_cards
+  (( ${#cards[@]} )) || return
+  local snapshot=("${cards[@]}")
+  confirm_delete D 'Press D again to empty trash' || return
+  # Only remove the cards the user confirmed, not arrivals from other windows.
+  rm -f -- "${snapshot[@]}" || notice='Could not empty trash'
   load_cards
 }
 
@@ -616,8 +718,11 @@ delete_selected() {
 # selected card is found again by <created>.<rand>. If that card is gone,
 # the selection keeps its place in the list.
 switch_view() {
-  local next=saved
-  [[ $view == saved ]] && next=window
+  local next=${1:-saved}
+  if [[ -z ${1-} ]]; then
+    [[ $view == saved ]] && next=window
+    [[ $view == trash ]] && next=$previous_view
+  fi
   view_selected[$view]=$selected
   view_top[$view]=$top
   view_card[$view]=${cards[selected]-}
@@ -633,7 +738,7 @@ switch_view() {
 }
 
 main() {
-  trap restore_terminal EXIT
+  trap 'restore_terminal; [[ -z $draft ]] || rm -f -- "$draft"' EXIT
   prepare_terminal
   load_cards
   while true; do
@@ -648,41 +753,68 @@ main() {
         (( selected < ${#cards[@]} - 1 )) && selected=$(( selected + 1 ))
         ;;
       K)
-        move_selected -1
+        [[ $view == trash ]] || move_selected -1
         ;;
       J)
-        move_selected 1
+        [[ $view == trash ]] || move_selected 1
         ;;
       $'\t' | $'\e[Z')
         switch_view
         ;;
+      t)
+        if [[ $view == trash ]]; then
+          switch_view "$previous_view"
+        else
+          previous_view=$view
+          switch_view trash
+        fi
+        ;;
+      r)
+        [[ $view != trash ]] || restore_selected
+        ;;
+      D)
+        [[ $view != trash ]] || empty_trash
+        ;;
+      M)
+        [[ $view == trash ]] || transfer_selected
+        ;;
       m)
-        # Saved cards are templates: they are never moved or popped.
         [[ $view == window ]] && move_selected_to_window
         ;;
       c)
-        copy_selected
+        [[ $view == trash ]] || copy_selected
         ;;
       y)
         yank_selected
         ;;
       '')
         (( ${#cards[@]} )) && refresh_selected || continue
-        paste_selected
+        if ! paste_selected; then
+          notice='Could not paste the card'
+          continue
+        fi
         exit 0
         ;;
       p)
         [[ $view == window ]] || continue
         (( ${#cards[@]} )) && refresh_selected || continue
-        paste_selected
-        rm -f "${cards[selected]}"
+        if ! paste_selected; then
+          notice='Could not paste the card'
+          continue
+        fi
+        if ! trash_card "${cards[selected]}" window pop; then
+          notice='Pasted, but could not move card to trash'
+          load_cards
+          continue
+        fi
         update_count "$window_id"
         exit 0
         ;;
       i)
-        insert_card
+        [[ $view == trash ]] || insert_card
         ;;
       e)
+        [[ $view == trash ]] && continue
         (( ${#cards[@]} )) && refresh_selected || continue
         with_terminal_restored edit_selected
         load_cards

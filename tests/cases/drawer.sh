@@ -164,7 +164,7 @@ test_drawer_e_edits_a_one_line_card_in_a_prefilled_box() {
   press j
   wait_for selected_is 'two' || fail "selected: $(selected), want two" || return
   press e
-  wait_for popup_line_is 1 'Edit card (Enter saves, empty deletes)' ||
+  wait_for popup_line_is 1 'Edit card (Enter saves, empty cancels)' ||
     fail "the edit box did not open: $(popup_line 1)" || return
   wait_for popup_line_is 2 '> two' || fail "box: $(popup_line 2), want: > two" || return
   press C-u
@@ -178,7 +178,7 @@ test_drawer_e_edits_a_one_line_card_in_a_prefilled_box() {
     fail "names: $(card_names "$(cards_dir)"), want them unchanged: $names"
 }
 
-test_drawer_e_that_empties_a_card_removes_it() {
+test_drawer_e_that_empties_a_card_keeps_the_original() {
   start_host || return
   drawer_stack "$(cards_dir)" 'one' 'two' 'three'
   open_drawer || return
@@ -188,11 +188,12 @@ test_drawer_e_that_empties_a_card_removes_it() {
   wait_for popup_line_is 2 '> two' || fail "box: $(popup_line 2), want: > two" || return
   press C-u
   press Enter
-  wait_for titles_are "$(cards_dir)" 'one|three' ||
-    fail "cards: $(titles "$(cards_dir)"), want: one|three" || return
-  wait_for selected_is 'three' || fail "selected: $(selected), want three" || return
-  wait_for drawer_list_is 'one|three' || fail "list: $(drawer_list), want: one|three" || return
-  [[ $(card_count) == 2 ]] || fail "@cuecard-count: $(card_count), want 2"
+  wait_for popup_has 'Empty edit ignored' || fail 'empty edit notice did not appear' || return
+  titles_are "$(cards_dir)" 'one|two|three' ||
+    fail "cards: $(titles "$(cards_dir)"), want: one|two|three" || return
+  wait_for selected_is 'two' || fail "selected: $(selected), want two" || return
+  wait_for drawer_list_is 'one|two|three' || fail "list: $(drawer_list)" || return
+  [[ $(card_count) == 3 ]] || fail "@cuecard-count: $(card_count), want 3"
 }
 
 test_drawer_e_on_a_multi_line_card_opens_vim() {
@@ -232,7 +233,7 @@ test_drawer_y_yanks_the_card_to_a_buffer_and_the_clipboard_and_keeps_it() {
   wait_for selected_is 'yank me' || fail "selected: $(selected), want: yank me" || return
   mark_paste
   press y
-  wait_for footer_is ' Yanked| e edit   d delete   q quit| c save   Tab saved   y yank| J/K move   m to window' ||
+  wait_for footer_is ' Yanked| e edit   d delete   q quit| c copy   M saved   Tab saved| J/K move  m window  t trash  y yank' ||
     fail "footer after y: $(footer)" || return
   # Like a paste, the yank leaves out the newline at the end of the card.
   drawer_buffer_is "$text" ||
@@ -508,10 +509,10 @@ test_drawer_footer_is_clipped_not_wrapped_when_narrow() {
   drawer_stack "$(cards_dir)" 'one'
   open_drawer || return
   [[ $(drawer_width) == 20 ]] || fail "drawer width: $(drawer_width), want 20" || return
-  want=' Enter pick   p pop| e edit   d delete| c save   Tab saved| J/K move   m to win'
+  want=' Enter pick   p pop| e edit   d delete| c copy   M saved| J/K move  m window'
   wait_for footer_is "$want" || fail "footer: $(footer), want: $want" || return
   # A wrapped last row would scroll the drawer up and take the tab bar away.
-  wait_for popup_line_is 1 ' window 1   saved 0' || fail "row 1: $(popup_line 1)" || return
+  wait_for popup_line_is 1 ' window 1' || fail "row 1: $(popup_line 1)" || return
   popup_lacks 'i new' && popup_lacks 'q quit' ||
     fail "the clipped end of a footer line shows up: $(popup_lines | paste -sd '|' -)"
 }
@@ -521,7 +522,7 @@ test_drawer_window_footer_lists_the_keys() {
   start_host || return
   drawer_stack "$(cards_dir)" 'one'
   open_drawer || return
-  want=' Enter pick   p pop   i new| e edit   d delete   q quit| c save   Tab saved   y yank| J/K move   m to window'
+  want=' Enter pick   p pop   i new| e edit   d delete   q quit| c copy   M saved   Tab saved| J/K move  m window  t trash  y yank'
   wait_for footer_is "$want" || fail "footer: $(footer), want: $want"
 }
 
@@ -603,7 +604,7 @@ test_drawer_very_short_drawers_keep_the_tab_bar_on_row_1() {
     ROWS=$rows start_host || return
     drawer_stack "$(cards_dir)" 'card one' 'card two'
     open_drawer || fail "with $rows rows" || return
-    wait_for popup_line_is 1 ' window 2   saved 0' ||
+    wait_for popup_line_is 1 ' window 2   saved 0   trash 0' ||
       fail "with $rows rows, row 1: $(popup_line 1)" || return
     if ((rows > 3)); then
       wait_for selected_is 'card one' ||
@@ -613,7 +614,7 @@ test_drawer_very_short_drawers_keep_the_tab_bar_on_row_1() {
     wait_for titles_are "$(cards_dir)" 'card one' ||
       fail "with $rows rows, cards: $(titles "$(cards_dir)"), want: card one" || return
     # The tab bar counts the cards, so it shows the drawer drew again.
-    wait_for popup_line_is 1 ' window 1   saved 0' ||
+    wait_for popup_line_is 1 ' window 1   saved 0   trash 1' ||
       fail "with $rows rows, row 1 after d: $(popup_line 1)" || return
     if ((rows > 3)); then
       wait_for selected_is 'card one' ||
